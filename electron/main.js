@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -89,5 +89,12 @@ ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.on('window:fullscreen', () => {
   if (mainWindow) {
     mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  }
+});
+
+// Open external URL in default browser
+ipcMain.on('open-external', (event, url) => {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
   }
 });

@@ -8,18 +8,20 @@ const ADMIN_EMAIL = 'emregocernew@gmail.com';
 export default function AdminScreen() {
   const navigate = useNavigate();
   const { user, profile } = useAuthStore();
-  const [tab, setTab] = useState('characters'); // characters | powers | titles | lore | charstories
+  const [tab, setTab] = useState('characters'); // characters | powers | titles | lore | charstories | versions
   const [characters, setCharacters] = useState([]);
   const [powers, setPowers] = useState([]);
   const [titles, setTitles] = useState([]);
   const [loreStories, setLoreStories] = useState([]);
   const [charStories, setCharStories] = useState([]);
+  const [appVersions, setAppVersions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingChar, setEditingChar] = useState(null);
   const [editingPower, setEditingPower] = useState(null);
   const [editingTitle, setEditingTitle] = useState(null);
   const [editingLore, setEditingLore] = useState(null);
   const [editingCharStory, setEditingCharStory] = useState(null);
+  const [publishVersion, setPublishVersion] = useState(null);
 
   // Auth guard
   if (!user || user.email !== ADMIN_EMAIL) {
@@ -41,18 +43,20 @@ export default function AdminScreen() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [{ data: chars }, { data: pows }, { data: tits }, { data: lore }, { data: cstories }] = await Promise.all([
+    const [{ data: chars }, { data: pows }, { data: tits }, { data: lore }, { data: cstories }, { data: vers }] = await Promise.all([
       supabase.from('characters').select('*').order('created_at', { ascending: false }),
       supabase.from('powers').select('*').order('created_at', { ascending: false }),
       supabase.from('titles').select('*').order('created_at', { ascending: false }),
       supabase.from('lore_stories').select('*').order('sort_order'),
       supabase.from('character_stories').select('*'),
+      supabase.from('app_versions').select('*').order('created_at', { ascending: false }),
     ]);
     setCharacters(chars || []);
     setPowers(pows || []);
     setTitles(tits || []);
     setLoreStories(lore || []);
     setCharStories(cstories || []);
+    setAppVersions(vers || []);
     setLoading(false);
   };
 
@@ -177,7 +181,31 @@ export default function AdminScreen() {
 
   const handleDeleteCharStory = async (id) => {
     if (!confirm('Bu karakter hikayesini silmek istediğine emin misin?')) return;
-    await supabase.from('character_stories').delete().eq('id', id);
+    
+
+  // ========== VERSION PUBLISH ==========
+  const emptyVersion = { version: '', release_notes: '', download_url: '' };
+
+  const handlePublishVersion = async () => {
+    if (!publishVersion?.version?.trim() || !publishVersion?.release_notes?.trim()) return;
+    setLoading(true);
+    await supabase.from('app_versions').insert({
+      version: publishVersion.version.trim(),
+      release_notes: publishVersion.release_notes.trim(),
+      download_url: publishVersion.download_url?.trim() || '',
+      published_by: user.id,
+      is_active: true,
+    });
+    setPublishVersion(null);
+    await fetchData();
+    setLoading(false);
+  };
+
+  const handleDeleteVersion = async (id) => {
+    if (!confirm('Bu sürümü silmek istediğine emin misin?')) return;
+    await supabase.from('app_versions').delete().eq('id', id);
+    await fetchData();
+  };await supabase.from('character_stories').delete().eq('id', id);
     await fetchData();
   };
 
@@ -239,6 +267,13 @@ export default function AdminScreen() {
           onClick={() => setTab('charstories')}
         >
           📜 Karakter Hikayeleri ({charStories.length})
+        </button>
+        <button
+          className={`btn btn-sm ${tab === 'versions' ? 'btn-gold' : 'btn-ghost'}`}
+          onClick={() => setTab('versions')}
+          style={{ color: tab === 'versions' ? undefined : '#4CAF50' }}
+        >
+          🚀 Sürüm Yayınla ({appVersions.length})
         </button>
       </div>
 
@@ -624,6 +659,94 @@ export default function AdminScreen() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* ======= VERSIONS TAB ======= */}
+        {tab === 'versions' && !loading && (
+          <>
+            <div className="flex items-center justify-between mb-md">
+              <h3 style={{ color: 'var(--gold)', fontFamily: 'var(--font-display)' }}>🚀 Sürüm Yönetimi</h3>
+              <div className="flex items-center gap-sm">
+                <span className="text-dim text-sm">Mevcut: v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'}</span>
+                <button className="btn btn-gold btn-sm" onClick={() => setPublishVersion({ ...emptyVersion })}>+ Yeni Sürüm Yayınla</button>
+              </div>
+            </div>
+
+            {publishVersion && (
+              <div className="parchment-panel" style={{ padding: 16, marginBottom: 16, border: '2px solid #4CAF50' }}>
+                <h4 style={{ color: '#4CAF50', marginBottom: 12 }}>🚀 Yeni Sürüm Yayınla</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Sürüm Numarası *</span>
+                    <input
+                      className="input input--sm"
+                      placeholder="1.1.0"
+                      value={publishVersion.version}
+                      onChange={(e) => setPublishVersion({ ...publishVersion, version: e.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">İndirme Linki (GitHub Release vb.)</span>
+                    <input
+                      className="input input--sm"
+                      placeholder="https://github.com/.../releases/download/..."
+                      value={publishVersion.download_url}
+                      onChange={(e) => setPublishVersion({ ...publishVersion, download_url: e.target.value })}
+                    />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-xs" style={{ marginTop: 10 }}>
+                  <span className="text-dim text-sm">Sürüm Notları *</span>
+                  <textarea
+                    className="input input--sm"
+                    rows={6}
+                    placeholder="Bu sürümde neler değişti..."
+                    value={publishVersion.release_notes}
+                    onChange={(e) => setPublishVersion({ ...publishVersion, release_notes: e.target.value })}
+                    style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                </label>
+                <div className="flex gap-sm" style={{ marginTop: 12 }}>
+                  <button className="btn btn-gold btn-sm" onClick={handlePublishVersion} style={{ background: '#4CAF50', borderColor: '#4CAF50' }}>
+                    🚀 Yayınla
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setPublishVersion(null)}>İptal</button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-dark)', color: 'var(--text-dim)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 6px' }}>Sürüm</th>
+                    <th style={{ textAlign: 'left' }}>Notlar</th>
+                    <th>Tarih</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appVersions.map((v, i) => (
+                    <tr key={v.id} style={{ borderBottom: '1px solid var(--parchment-mid)', background: i === 0 ? 'rgba(76,175,80,0.08)' : undefined }}>
+                      <td style={{ padding: '6px', fontFamily: 'var(--font-heading)', color: i === 0 ? '#4CAF50' : 'var(--gold)' }}>
+                        v{v.version}
+                        {i === 0 && <span style={{ marginLeft: 8, fontSize: 9, background: '#4CAF50', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>GÜNCEL</span>}
+                      </td>
+                      <td style={{ padding: '6px' }}>
+                        <div className="text-dim" style={{ fontSize: 11, whiteSpace: 'pre-line' }}>{v.release_notes?.substring(0, 120)}{v.release_notes?.length > 120 ? '...' : ''}</div>
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>
+                        {new Date(v.created_at).toLocaleDateString('tr-TR')}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => handleDeleteVersion(v.id)}>🗑</button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

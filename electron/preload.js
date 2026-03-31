@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   close: () => ipcRenderer.send('window:close'),
   fullscreen: () => ipcRenderer.send('window:fullscreen'),
   listMusicFiles: () => ipcRenderer.invoke('list-music-files'),
+  openExternal: (url) => ipcRenderer.send('open-external', url),
 });

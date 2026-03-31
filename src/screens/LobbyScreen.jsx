@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
 import FriendsSidebar from '../components/FriendsSidebar';
+import PatchNotesModal from '../components/PatchNotesModal';
+import UpdateChecker from '../components/UpdateChecker';
 
 export default function LobbyScreen() {
   const navigate = useNavigate();
@@ -11,6 +13,7 @@ export default function LobbyScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [showJoinCode, setShowJoinCode] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showPatchNotes, setShowPatchNotes] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
@@ -231,6 +234,21 @@ export default function LobbyScreen() {
           </div>
         </div>
       )}
+
+      {/* Version Footer */}
+      <div className="version-footer">
+        <span className="version-footer__copyright">Vulpax © 2026</span>
+        <span className="version-footer__version">v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'}</span>
+        <button className="version-footer__patch-btn" onClick={() => setShowPatchNotes(true)} title="Sürüm Notları">
+          📋
+        </button>
+      </div>
+
+      {/* Patch Notes Modal */}
+      {showPatchNotes && <PatchNotesModal onClose={() => setShowPatchNotes(false)} />}
+
+      {/* Update Checker */}
+      <UpdateChecker />
     </div>
   );
 }
