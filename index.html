@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vulpax DnD</title>
+    <script>
+      // Polyfill for Node.js 'global' (required by simple-peer / readable-stream)
+      if (typeof global === 'undefined') { window.global = window; }
+      if (typeof process === 'undefined') { window.process = { env: {}, browser: true }; }
+      if (typeof Buffer === 'undefined') { window.Buffer = { isBuffer: function() { return false; } }; }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700;900&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root">
+      <div id="loading-fallback" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1410;color:#b89456;font-family:serif;font-size:24px;flex-direction:column;gap:16px">
+        <div>⚔ VULPAX DND ⚔</div>
+        <div style="font-size:14px;color:#6b5b4a">Yükleniyor...</div>
+      </div>
+    </div>
+    <div id="error-display" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#2a0a0a;color:#ff6b6b;padding:16px;font-family:monospace;font-size:13px;z-index:99999;max-height:200px;overflow:auto;border-top:2px solid #7a1c1c">
+      <button onclick="this.parentElement.style.display='none';this.parentElement.innerHTML=''" style="position:absolute;top:4px;right:8px;background:none;border:none;color:#ff6b6b;font-size:18px;cursor:pointer;z-index:100000">✕</button>
+    </div>
+    <script>
+      window.onerror = function(msg, url, line, col, err) {
+        var el = document.getElementById('error-display');
+        if (el) { el.style.display = 'block'; el.insertAdjacentHTML('beforeend','<div>❌ ' + msg + ' (line ' + line + ')</div>'); }
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        var el = document.getElementById('error-display');
+        if (el) { el.style.display = 'block'; el.insertAdjacentHTML('beforeend','<div>❌ Promise: ' + (e.reason && e.reason.message || e.reason) + '</div>'); }
+      });
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
