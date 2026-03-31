@@ -606,11 +606,25 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
       } catch {}
       // Fallback: hardcoded track list
       setMusicTracks([
-        { file: './assest/music/Clash%20of%20Kings.mp3', name: 'Clash of Kings' },
-        { file: './assest/music/Quiet%20Hall%20Of%20Amber%20Light.mp3', name: 'Quiet Hall Of Amber Light' },
-        { file: './assest/music/Ta%C5%9F%20Duvarlar%20Aras%C4%B1nda.mp3', name: 'Taş Duvarlar Arasında' },
-        { file: './assest/music/Zindan%C4%B1n%20Nefesi.mp3', name: 'Zindanın Nefesi' },
-        { file: './assest/music/soundreality-horror-rumble-winds-253834.mp3', name: 'Horror Rumble Winds' },
+        { file: './assest/music/1.mp3', name: '1' },
+        { file: './assest/music/2.mp3', name: '2' }, 
+        { file: './assest/music/3.mp3', name: '3' },
+        { file: './assest/music/4.mp3', name: '4' },
+        { file: './assest/music/5.mp3', name: '5' },
+        { file: './assest/music/6.mp3', name: '6' },
+        { file: './assest/music/7.mp3', name: '7' },
+        { file: './assest/music/8.mp3', name: '8' },
+        { file: './assest/music/9.mp3', name: '9' },
+        { file: './assest/music/10.mp3', name: '10' },
+        { file: './assest/music/11.mp3', name: '11' },
+        { file: './assest/music/12.mp3', name: '12' },
+        { file: './assest/music/13.mp3', name: '13' },
+        { file: './assest/music/14.mp3', name: '14' },
+        { file: './assest/music/15.mp3', name: '15' },       
+        { file: './assest/music/16.mp3', name: '16' },
+        { file: './assest/music/17.mp3', name: '17' },
+        { file: './assest/music/18.mp3', name: '18' },
+        { file: './assest/music/19.mp3', name: '19' },
       ]);
     };
     loadTracks();
@@ -702,11 +716,28 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     if (musicActions.length === 0) return;
     const latest = musicActions[0]; // actions are newest-first
     const raw = latest.action_value.musicTrack;
-    const track = (!raw || raw === '__stop__') ? null : raw;
-    if (track !== currentMusicRef.current) {
-      fadeToTrack(track);
+    const rawTrack = (!raw || raw === '__stop__') ? null : raw;
+
+    const resolveTrack = (candidate) => {
+      if (!candidate) return null;
+      // If exact match in loaded tracks
+      if (musicTracks.find(t => t.file === candidate)) return candidate;
+      // Try decodeURIComponent (handle percent-encoded names)
+      try { const dec = decodeURIComponent(candidate); if (musicTracks.find(t => t.file === dec)) return dec; } catch (e) {}
+      // Try common prefix
+      const pref = candidate.startsWith('./') ? candidate : `./assest/music/${candidate}`;
+      if (musicTracks.find(t => t.file === pref)) return pref;
+      // Try encodeURIComponent
+      try { const enc = encodeURIComponent(candidate); if (musicTracks.find(t => t.file === enc)) return enc; } catch (e) {}
+      // Last resort: return candidate raw
+      return candidate;
+    };
+
+    const resolved = resolveTrack(rawTrack);
+    if (resolved !== currentMusicRef.current) {
+      fadeToTrack(resolved);
     }
-  }, [actions]);
+  }, [actions, musicTracks]);
 
   // Volume control
   useEffect(() => {
