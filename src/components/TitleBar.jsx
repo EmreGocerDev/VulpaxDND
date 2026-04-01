@@ -3,8 +3,12 @@ import React, { useState, useEffect } from 'react';
 export default function TitleBar() {
   const api = window.electronAPI;
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
+    // Detect macOS via navigator
+    setIsMac(navigator.platform?.toLowerCase().includes('mac'));
+
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
@@ -25,13 +29,15 @@ export default function TitleBar() {
   if (isFullscreen) return null;
 
   return (
-    <div className="title-bar">
+    <div className="title-bar" style={isMac ? { paddingLeft: '80px' } : undefined}>
       <span className="title-bar__title">⚔ VULPAX DND ⚔</span>
-      <div className="title-bar__controls">
-        <button className="title-bar__btn" onClick={() => api?.minimize()}>─</button>
-        <button className="title-bar__btn" onClick={() => api?.maximize()}>□</button>
-        <button className="title-bar__btn title-bar__btn--close" onClick={() => api?.close()}>✕</button>
-      </div>
+      {!isMac && (
+        <div className="title-bar__controls">
+          <button className="title-bar__btn" onClick={() => api?.minimize()}>─</button>
+          <button className="title-bar__btn" onClick={() => api?.maximize()}>□</button>
+          <button className="title-bar__btn title-bar__btn--close" onClick={() => api?.close()}>✕</button>
+        </div>
+      )}
     </div>
   );
 }

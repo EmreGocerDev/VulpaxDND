@@ -56,21 +56,26 @@ app.on('open-url', (event, url) => {
   handleDeepLink(url);
 });
 
+const isMac = process.platform === 'darwin';
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1200,
     minHeight: 800,
-    frame: false,
-    titleBarStyle: 'hidden',
+    frame: isMac ? true : false,
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    trafficLightPosition: isMac ? { x: 12, y: 12 } : undefined,
     backgroundColor: '#1a1410',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-    icon: path.join(__dirname, '../assest/logo.ico'),
+    icon: isMac
+      ? path.join(__dirname, '../assest/logo.icns')
+      : path.join(__dirname, '../assest/logo.ico'),
   });
 
   // Sayfa yükleme hatalarını terminale yaz
@@ -93,7 +98,18 @@ function createWindow() {
       }
     });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // Try multiple paths for cross-platform compatibility
+    const asarPath = path.join(app.getAppPath(), 'dist', 'index.html');
+    const resourcePath = path.join(process.resourcesPath, 'app', 'dist', 'index.html');
+    const relativePath = path.join(__dirname, '../dist/index.html');
+
+    if (fs.existsSync(asarPath)) {
+      mainWindow.loadFile(asarPath);
+    } else if (fs.existsSync(resourcePath)) {
+      mainWindow.loadFile(resourcePath);
+    } else {
+      mainWindow.loadFile(relativePath);
+    }
   }
 
   // Sayfa yüklendiğinde bekleyen deep link varsa işle
@@ -142,7 +158,9 @@ app.whenReady().then(() => {
 
     // Check for updates after a short delay
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
+      autoUpdater.checkForUpdates().catch((err) => {
+        console.log('Auto-update check failed (non-fatal):', err?.message || err);
+      });
     }, 5000);
   }
 });
