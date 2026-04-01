@@ -30,6 +30,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
@@ -65,20 +66,16 @@
       "icon": "assest/logo.png"
     },
     "mac": {
-  "target": ["dmg", "zip"],
-  "icon": "assest/logo.icns",
-  "category": "public.app-category.games"
-},
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assest/logo.icns",
+      "category": "public.app-category.games"
+    },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "include": "build/installer.nsh",
-      "license": "build/license.txt",
-      "installerIcon": "build/logo.ico",
-      "uninstallerIcon": "build/logo.ico",
-      "installerHeaderIcon": "build/logo.ico",
-      "perMachine": false,
-      "deleteAppDataOnUninstall": false
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
     },
     "publish": {
       "provider": "github",

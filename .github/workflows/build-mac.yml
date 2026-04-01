@@ -23,10 +23,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and package for macOS
+      - name: Build Vite frontend
+        run: npx vite build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install webkit --with-deps
+
+      - name: Run Screenshot Test
+        run: node screenshot-test.js
+
+      - name: Upload Screenshot Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-visual-preview
+          path: macos-preview.png
+
+      - name: Package for macOS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run release:mac
+        run: npx electron-builder --mac --publish always
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
