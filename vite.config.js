@@ -32,6 +32,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    warmup: {
+      clientFiles: ['./src/main.jsx', './src/App.jsx', './src/styles/global.css'],
+    },
   },
   build: {
     outDir: 'dist',

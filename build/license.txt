@@ -1,0 +1,96 @@
+═══════════════════════════════════════════════════
+        VULPAX DnD — KULLANIM SÖZLEŞMESİ
+═══════════════════════════════════════════════════
+
+Son Güncelleme: 1 Nisan 2026
+
+Bu Kullanım Sözleşmesi ("Sözleşme"), Vulpax DnD uygulamasını 
+("Uygulama") indiren, kuran veya kullanan kişi ("Kullanıcı") ile 
+geliştirici ("Vulpax") arasında yapılmıştır.
+
+1. KABUL
+────────
+Bu uygulamayı kurarak ve kullanarak, bu sözleşmenin tüm 
+şartlarını okuduğunuzu, anladığınızı ve kabul ettiğinizi 
+beyan etmiş olursunuz.
+
+2. LİSANS
+──────────
+Vulpax size bu uygulamayı kişisel ve ticari olmayan amaçlarla 
+kullanmanız için sınırlı, münhasır olmayan, devredilemez bir 
+lisans vermektedir. Bu lisans:
+  • Uygulamayı kopyalamanıza, dağıtmanıza veya satmanıza 
+    izin vermez.
+  • Uygulamanın kaynak kodunu tersine mühendislik yapmanıza 
+    izin vermez.
+  • Uygulamayı değiştirip yeniden dağıtmanıza izin vermez.
+
+3. HESAP ve VERİ
+────────────────
+  • Uygulama, Supabase altyapısı üzerinden çalışmaktadır.
+  • Kayıt olurken verdiğiniz e-posta ve kullanıcı adı bilgileri 
+    saklanır.
+  • Şifreleriniz güvenli şekilde hash'lenerek depolanır.
+  • Oyun içi ilerlemeniz, karakterleriniz ve envanter bilgileriniz 
+    sunucuda saklanır.
+
+4. OYUN İÇİ PARA ve MARKET
+───────────────────────────
+  • Oyun içi altın tamamen sanal bir para birimidir.
+  • Altın ile satın alınan karakter, güç kartı ve ünvanlar 
+    gerçek bir maddi değer taşımaz.
+  • Promosyon kodları ile kazanılan altın iade edilemez.
+  • Geliştirici, oyun ekonomisinde dilediği zaman değişiklik 
+    yapma hakkını saklı tutar.
+
+5. DAVRANIŞLAR
+──────────────
+Kullanıcı şunları yapmamayı kabul eder:
+  • Hile, exploit veya bot kullanmak.
+  • Diğer kullanıcılara karşı taciz, nefret söylemi veya 
+    uygunsuz davranışlarda bulunmak.
+  • Sunucuya saldırı (DDoS, injection vb.) girişiminde bulunmak.
+  • Hesabını başkasına devretmek veya satmak.
+
+İhlal durumunda hesabınız kalıcı olarak kapatılabilir.
+
+6. GİZLİLİK
+────────────
+  • Kişisel verileriniz üçüncü taraflarla paylaşılmaz.
+  • Verileriniz yalnızca uygulamanın işlevselliği için kullanılır.
+  • Hesap silme talebiniz durumunda tüm verileriniz silinir.
+
+7. SORUMLULUK REDDİ
+────────────────────
+  • Uygulama "olduğu gibi" sunulmaktadır.
+  • Geliştirici, uygulamanın kesintisiz veya hatasız çalışacağını 
+    garanti etmez.
+  • Veri kaybı, bağlantı sorunları veya üçüncü taraf 
+    hizmetlerinden kaynaklanan aksaklıklardan sorumlu değildir.
+
+8. GÜNCELLEMELER
+────────────────
+  • Uygulama otomatik güncelleme özelliği içerir.
+  • Güncellemeler yeni özellikler, hata düzeltmeleri veya 
+    güvenlik yamaları içerebilir.
+  • Güncelleme sonrası bazı özellikler değişebilir veya 
+    kaldırılabilir.
+
+9. FESİH
+────────
+  • İstediğiniz zaman uygulamayı kaldırarak bu sözleşmeyi 
+    feshedebilirsiniz.
+  • Geliştirici, sözleşme ihlali durumunda lisansınızı 
+    tek taraflı olarak feshedebilir.
+
+10. DEĞİŞİKLİKLER
+──────────────────
+  • Bu sözleşme önceden bildirimde bulunmaksızın 
+    güncellenebilir.
+  • Güncellenmiş sözleşme uygulama içinden erişilebilir olacaktır.
+  • Uygulamayı kullanmaya devam etmeniz, güncel sözleşmeyi 
+    kabul ettiğiniz anlamına gelir.
+
+═══════════════════════════════════════════════════
+       © 2026 Vulpax — Tüm hakları saklıdır.
+═══════════════════════════════════════════════════

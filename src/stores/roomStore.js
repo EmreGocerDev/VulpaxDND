@@ -239,4 +239,28 @@ export const useRoomStore = create((set, get) => ({
       .update({ stun_turns: turns })
       .eq('id', memberId);
   },
+
+  // Çeviklik bonusunu güncelle
+  updateMemberAgilityBonus: async (memberId, bonus) => {
+    await supabase
+      .from('room_members')
+      .update({ agility_bonus: bonus })
+      .eq('id', memberId);
+  },
+
+  // Zeka bonusunu güncelle
+  updateMemberIntelligenceBonus: async (memberId, bonus) => {
+    await supabase
+      .from('room_members')
+      .update({ intelligence_bonus: bonus })
+      .eq('id', memberId);
+  },
+
+  // Karizma bonusunu güncelle
+  updateMemberCharismaBonus: async (memberId, bonus) => {
+    await supabase
+      .from('room_members')
+      .update({ charisma_bonus: bonus })
+      .eq('id', memberId);
+  },
 }));

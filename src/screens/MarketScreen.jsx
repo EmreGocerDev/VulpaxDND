@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useMarketStore } from '../stores/marketStore';
 import { useToastStore } from '../stores/toastStore';
+import { supabase } from '../lib/supabase';
 
 const RARITY_ICONS = {
   common: '⚪',
@@ -36,6 +37,10 @@ export default function MarketScreen() {
 
   const [invSearch, setInvSearch] = useState('');
   const [invFilter, setInvFilter] = useState('all'); // all | character | power | title
+
+  const [keycodeInput, setKeycodeInput] = useState('');
+  const [keycodeLoading, setKeycodeLoading] = useState(false);
+  const [keycodeResult, setKeycodeResult] = useState(null); // { success, message, gold_reward }
 
   useEffect(() => {
     fetchMarketData();
@@ -125,6 +130,31 @@ export default function MarketScreen() {
   const ownsItem = (itemId, type) =>
     inventory.some((inv) => inv.item_id === itemId && inv.item_type === type);
 
+  const handleRedeemKeycode = async () => {
+    if (!profile || !keycodeInput.trim()) return;
+    setKeycodeLoading(true);
+    setKeycodeResult(null);
+    try {
+      const { data, error } = await supabase.rpc('redeem_keycode', {
+        p_code: keycodeInput.trim().toUpperCase(),
+        p_user_id: profile.id,
+      });
+      if (error) throw error;
+      setKeycodeResult(data);
+      if (data.success) {
+        setKeycodeInput('');
+        await fetchProfile();
+        toast.success(data.message);
+      } else {
+        toast.error(data.error);
+      }
+    } catch (err) {
+      toast.error(err.message || 'Kod kullanılırken hata oluştu.');
+      setKeycodeResult({ success: false, error: err.message });
+    }
+    setKeycodeLoading(false);
+  };
+
   return (
     <div className="screen" style={{ overflow: 'hidden' }}>
       {/* Header */}
@@ -151,6 +181,7 @@ export default function MarketScreen() {
           { key: 'powers', label: '✨ Güçler' },
           { key: 'titles', label: '🏅 Ünvanlar' },
           { key: 'lootboxes', label: '📦 Kasalar' },
+          { key: 'keycode', label: '🔑 Kod Kullan' },
           { key: 'inventory', label: '🎒 Envanter' },
         ].map((t) => (
           <button
@@ -312,6 +343,57 @@ export default function MarketScreen() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Keycode Tab */}
+      {tab === 'keycode' && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '40px 0' }}>
+          <div className="parchment-panel parchment-panel--ornate" style={{ maxWidth: 440, width: '100%', padding: 32, textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔑</div>
+            <h2 style={{ fontFamily: 'var(--font-display)', color: 'var(--gold)', marginBottom: 4 }}>Promosyon Kodu</h2>
+            <p className="text-dim text-sm" style={{ marginBottom: 20 }}>Bir promosyon kodu gir ve altın kazan!</p>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <input
+                className="input"
+                placeholder="KODUNU GİR..."
+                value={keycodeInput}
+                onChange={(e) => { setKeycodeInput(e.target.value); setKeycodeResult(null); }}
+                onKeyDown={(e) => e.key === 'Enter' && handleRedeemKeycode()}
+                style={{ flex: 1, textTransform: 'uppercase', letterSpacing: 3, fontFamily: 'monospace', fontSize: 16, textAlign: 'center' }}
+                maxLength={30}
+                disabled={keycodeLoading}
+              />
+            </div>
+
+            <button
+              className="btn btn-gold w-full"
+              onClick={handleRedeemKeycode}
+              disabled={keycodeLoading || !keycodeInput.trim()}
+              style={{ fontSize: 15, padding: '10px 0' }}
+            >
+              {keycodeLoading ? '⏳ Kontrol ediliyor...' : '🪙 Kodu Kullan'}
+            </button>
+
+            {keycodeResult && !keycodeResult.success && (
+              <div style={{ marginTop: 16, padding: '10px 16px', borderRadius: 8, background: 'rgba(244,67,54,.15)', border: '1px solid rgba(244,67,54,.3)', color: '#f44336', fontSize: 13 }}>
+                ❌ {keycodeResult.error}
+              </div>
+            )}
+
+            {keycodeResult && keycodeResult.success && (
+              <div style={{ marginTop: 16, padding: '16px', borderRadius: 8, background: 'rgba(76,175,80,.15)', border: '1px solid rgba(76,175,80,.3)', color: '#4CAF50', fontSize: 15, fontWeight: 700 }}>
+                <div style={{ fontSize: 32, marginBottom: 4 }}>🎉</div>
+                +{keycodeResult.gold_reward} 🪙 Altın kazandın!
+              </div>
+            )}
+
+            <div className="text-dim" style={{ marginTop: 20, fontSize: 11, lineHeight: 1.5 }}>
+              Her kod kişi başı yalnızca <strong>bir kez</strong> kullanılabilir.<br />
+              Kodlar sınırlı sayıda veya süreli olabilir.
+            </div>
+          </div>
         </div>
       )}
 

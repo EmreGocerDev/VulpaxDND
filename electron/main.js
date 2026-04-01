@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 const isDev = !app.isPackaged;
 
@@ -29,13 +30,14 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (isDev) return; // dev modda DevTools zaten gösteriyor, performans için atla
     const prefix = ['LOG', 'WARN', 'ERROR'][level] || 'LOG';
     console.log(`[RENDERER ${prefix}] ${message}`);
   });
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    // F12 ile DevTools aç/kapa
+    // F12 ile DevTools aç/kapa (otomatik açılmıyor - performans için)
     mainWindow.webContents.on('before-input-event', (event, input) => {
       if (input.key === 'F12' && input.type === 'keyDown') {
         mainWindow.webContents.toggleDevTools();
@@ -46,7 +48,57 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  // Auto-updater (only in production)
+  if (!isDev) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('checking-for-update', () => {
+      sendUpdateStatus('checking');
+    });
+    autoUpdater.on('update-available', (info) => {
+      sendUpdateStatus('available', info);
+    });
+    autoUpdater.on('update-not-available', () => {
+      sendUpdateStatus('not-available');
+    });
+    autoUpdater.on('download-progress', (progress) => {
+      sendUpdateStatus('downloading', { percent: Math.round(progress.percent) });
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      sendUpdateStatus('downloaded', info);
+    });
+    autoUpdater.on('error', (err) => {
+      sendUpdateStatus('error', { message: err?.message || 'Bilinmeyen hata' });
+    });
+
+    // Check for updates after a short delay
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 5000);
+  }
+});
+
+function sendUpdateStatus(status, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status, ...data });
+  }
+}
+
+// Manual update check from renderer
+ipcMain.on('check-for-updates', () => {
+  if (!isDev) {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }
+});
+
+// Install update now
+ipcMain.on('install-update', () => {
+  autoUpdater.quitAndInstall(false, true);
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

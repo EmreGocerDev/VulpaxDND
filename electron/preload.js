@@ -7,4 +7,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fullscreen: () => ipcRenderer.send('window:fullscreen'),
   listMusicFiles: () => ipcRenderer.invoke('list-music-files'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
+  // Auto-updater
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  installUpdate: () => ipcRenderer.send('install-update'),
+  onUpdateStatus: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('update-status', handler);
+    return () => ipcRenderer.removeListener('update-status', handler);
+  },
 });

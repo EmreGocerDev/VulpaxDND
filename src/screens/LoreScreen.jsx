@@ -8,6 +8,7 @@ export default function LoreScreen() {
   const [characters, setCharacters] = useState([]);
   const [charStories, setCharStories] = useState([]);
   const [selectedChar, setSelectedChar] = useState(null);
+  const [storyModal, setStoryModal] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -114,8 +115,11 @@ export default function LoreScreen() {
                   return (
                     <div
                       key={char.id}
-                      className={`lore-char-card ${selectedChar === char.id ? 'lore-char-card--active' : ''}`}
-                      onClick={() => setSelectedChar(selectedChar === char.id ? null : char.id)}
+                      className="lore-char-card"
+                      onClick={() => {
+                        const story = getCharStory(char.id);
+                        setStoryModal({ char, story });
+                      }}
                     >
                       <div className="lore-char-card__image" style={img ? { backgroundImage: `url(${img})` } : {}}>
                         <div className="lore-char-card__overlay">
@@ -123,27 +127,6 @@ export default function LoreScreen() {
                           <div className="lore-char-card__region">{char.region || 'Bilinmeyen'}</div>
                         </div>
                       </div>
-                      {selectedChar === char.id && (
-                        <div className="lore-char-card__story anim-slide">
-                          <div className="lore-char-card__stats">
-                            <span>❤️ {char.health}</span>
-                            <span>⚔️ {char.attack}</span>
-                            <span>🛡️ {char.defense}</span>
-                            <span className="text-gold">{char.rarity?.toUpperCase()}</span>
-                          </div>
-                          {char.description && (
-                            <p className="lore-char-card__desc">{char.description}</p>
-                          )}
-                          {story ? (
-                            <div className="lore-char-card__lore">
-                              <div className="lore-char-card__lore-title">📜 {story.title || 'Hikaye'}</div>
-                              <p>{story.content}</p>
-                            </div>
-                          ) : (
-                            <p className="text-dim" style={{ fontStyle: 'italic', fontSize: 12 }}>Bu karakterin hikayesi henüz yazılmamış...</p>
-                          )}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -153,6 +136,60 @@ export default function LoreScreen() {
         </div>
 
       </div>
+
+      {/* Character Story Full-Screen Modal */}
+      {storyModal && (
+        <div className="modal-overlay" onClick={() => setStoryModal(null)}>
+          <div className="lore-story-modal anim-slide" onClick={(e) => e.stopPropagation()}>
+            <button className="lore-story-modal__close" onClick={() => setStoryModal(null)}>✕</button>
+
+            <div className="lore-story-modal__scroll vulpax-scroll">
+              {/* Character Image */}
+              <div className="lore-story-modal__hero">
+                {storyModal.char.image_placeholder && (
+                  <img
+                    src={storyModal.char.image_placeholder.startsWith('/') ? '.' + storyModal.char.image_placeholder : storyModal.char.image_placeholder}
+                    alt={storyModal.char.name}
+                    className="lore-story-modal__image"
+                  />
+                )}
+                <h2 className="lore-story-modal__name">{storyModal.char.name}</h2>
+                <div className="lore-story-modal__region">🏰 {storyModal.char.region || 'Bilinmeyen Diyar'}</div>
+              </div>
+
+              {/* Stats */}
+              <div className="lore-story-modal__stats">
+                <div className="lore-story-modal__stat">❤️<span>{storyModal.char.health}</span></div>
+                <div className="lore-story-modal__stat">⚔️<span>{storyModal.char.attack}</span></div>
+                <div className="lore-story-modal__stat">🛡️<span>{storyModal.char.defense}</span></div>
+                <div className="lore-story-modal__stat">🧠<span>{storyModal.char.intelligence ?? '-'}</span></div>
+                <div className="lore-story-modal__stat">👑<span>{storyModal.char.charisma ?? '-'}</span></div>
+                <div className="lore-story-modal__stat" style={{ color: 'var(--gold)' }}>⭐<span>{storyModal.char.rarity?.toUpperCase()}</span></div>
+              </div>
+
+              {/* Divider */}
+              <div className="lore-story-modal__divider">⚜</div>
+
+              {/* Description */}
+              {storyModal.char.description && (
+                <p className="lore-story-modal__desc">{storyModal.char.description}</p>
+              )}
+
+              {/* Story */}
+              {storyModal.story ? (
+                <div className="lore-story-modal__lore">
+                  <h3 className="lore-story-modal__lore-title">📜 {storyModal.story.title || 'Hikaye'}</h3>
+                  <p className="lore-story-modal__lore-text">{storyModal.story.content}</p>
+                </div>
+              ) : (
+                <p className="text-dim" style={{ fontStyle: 'italic', fontSize: 13, textAlign: 'center', marginTop: 24 }}>
+                  Bu karakterin hikayesi henüz yazılmamış...
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

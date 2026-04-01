@@ -8,20 +8,23 @@ const ADMIN_EMAIL = 'emregocernew@gmail.com';
 export default function AdminScreen() {
   const navigate = useNavigate();
   const { user, profile } = useAuthStore();
-  const [tab, setTab] = useState('characters'); // characters | powers | titles | lore | charstories | versions
+  const [tab, setTab] = useState('characters'); // characters | powers | titles | lore | charstories | storycards | keycodes
   const [characters, setCharacters] = useState([]);
   const [powers, setPowers] = useState([]);
   const [titles, setTitles] = useState([]);
   const [loreStories, setLoreStories] = useState([]);
   const [charStories, setCharStories] = useState([]);
-  const [appVersions, setAppVersions] = useState([]);
+  const [dmStoryCards, setDmStoryCards] = useState([]);
+  const [keycodes, setKeycodes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingChar, setEditingChar] = useState(null);
   const [editingPower, setEditingPower] = useState(null);
   const [editingTitle, setEditingTitle] = useState(null);
   const [editingLore, setEditingLore] = useState(null);
   const [editingCharStory, setEditingCharStory] = useState(null);
-  const [publishVersion, setPublishVersion] = useState(null);
+  const [editingStoryCard, setEditingStoryCard] = useState(null);
+  const [editingKeycode, setEditingKeycode] = useState(null);
+  const [storyCardFilter, setStoryCardFilter] = useState('all');
 
   // Auth guard
   if (!user || user.email !== ADMIN_EMAIL) {
@@ -43,26 +46,28 @@ export default function AdminScreen() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [{ data: chars }, { data: pows }, { data: tits }, { data: lore }, { data: cstories }, { data: vers }] = await Promise.all([
+    const [{ data: chars }, { data: pows }, { data: tits }, { data: lore }, { data: cstories }, { data: scards }, { data: kcodes }] = await Promise.all([
       supabase.from('characters').select('*').order('created_at', { ascending: false }),
       supabase.from('powers').select('*').order('created_at', { ascending: false }),
       supabase.from('titles').select('*').order('created_at', { ascending: false }),
       supabase.from('lore_stories').select('*').order('sort_order'),
       supabase.from('character_stories').select('*'),
-      supabase.from('app_versions').select('*').order('created_at', { ascending: false }),
+      supabase.from('dm_story_cards').select('*').order('category').order('subcategory'),
+      supabase.from('keycodes').select('*').order('created_at', { ascending: false }),
     ]);
     setCharacters(chars || []);
     setPowers(pows || []);
     setTitles(tits || []);
     setLoreStories(lore || []);
     setCharStories(cstories || []);
-    setAppVersions(vers || []);
+    setDmStoryCards(scards || []);
+    setKeycodes(kcodes || []);
     setLoading(false);
   };
 
   // ========== CHARACTER CRUD ==========
   const emptyChar = {
-    name: '', health: 100, attack: 10, defense: 10, intelligence: 10, charisma: 10,
+    name: '', health: 100, attack: 10, defense: 10, agility: 10, intelligence: 10, charisma: 10,
     rarity: 'common', gold_cost: 50, description: '', image_placeholder: '/assets/characters/default.png',
     region: '',
   };
@@ -162,6 +167,31 @@ export default function AdminScreen() {
     await fetchData();
   };
 
+  // ========== DM STORY CARDS CRUD ==========
+  const STORY_CATEGORIES = ['yol', 'zindan', 'arkadaslik', 'festival', 'savas', 'gizem', 'tuzak', 'ticaret'];
+  const STORY_DIFFICULTIES = ['kolay', 'orta', 'zor', 'efsanevi'];
+  const emptyStoryCard = { category: 'yol', subcategory: '', title: '', content: '', skill_check: '', difficulty: 'orta' };
+
+  const handleSaveStoryCard = async () => {
+    if (!editingStoryCard?.title?.trim()) return;
+    setLoading(true);
+    if (editingStoryCard.id) {
+      const { id, created_at, ...updates } = editingStoryCard;
+      await supabase.from('dm_story_cards').update(updates).eq('id', id);
+    } else {
+      await supabase.from('dm_story_cards').insert(editingStoryCard);
+    }
+    setEditingStoryCard(null);
+    await fetchData();
+    setLoading(false);
+  };
+
+  const handleDeleteStoryCard = async (id) => {
+    if (!confirm('Bu kartı silmek istediğine emin misin?')) return;
+    await supabase.from('dm_story_cards').delete().eq('id', id);
+    await fetchData();
+  };
+
   // ========== CHARACTER STORIES CRUD ==========
   const emptyCharStory = { character_id: '', title: '', content: '' };
 
@@ -181,31 +211,41 @@ export default function AdminScreen() {
 
   const handleDeleteCharStory = async (id) => {
     if (!confirm('Bu karakter hikayesini silmek istediğine emin misin?')) return;
-    
+    await supabase.from('character_stories').delete().eq('id', id);
+    await fetchData();
+  };
 
-  // ========== VERSION PUBLISH ==========
-  const emptyVersion = { version: '', release_notes: '', download_url: '' };
+  // ========== KEYCODE CRUD ==========
+  const emptyKeycode = { code: '', gold_reward: 100, max_uses: 1, expires_at: '', active: true };
 
-  const handlePublishVersion = async () => {
-    if (!publishVersion?.version?.trim() || !publishVersion?.release_notes?.trim()) return;
+  const handleSaveKeycode = async () => {
+    if (!editingKeycode?.code?.trim()) return;
     setLoading(true);
-    await supabase.from('app_versions').insert({
-      version: publishVersion.version.trim(),
-      release_notes: publishVersion.release_notes.trim(),
-      download_url: publishVersion.download_url?.trim() || '',
-      published_by: user.id,
-      is_active: true,
-    });
-    setPublishVersion(null);
+    const payload = {
+      code: editingKeycode.code.trim().toUpperCase(),
+      gold_reward: editingKeycode.gold_reward,
+      max_uses: editingKeycode.max_uses,
+      active: editingKeycode.active,
+      expires_at: editingKeycode.expires_at || null,
+    };
+    if (editingKeycode.id) {
+      await supabase.from('keycodes').update(payload).eq('id', editingKeycode.id);
+    } else {
+      await supabase.from('keycodes').insert(payload);
+    }
+    setEditingKeycode(null);
     await fetchData();
     setLoading(false);
   };
 
-  const handleDeleteVersion = async (id) => {
-    if (!confirm('Bu sürümü silmek istediğine emin misin?')) return;
-    await supabase.from('app_versions').delete().eq('id', id);
+  const handleDeleteKeycode = async (id) => {
+    if (!confirm('Bu kodu silmek istediğine emin misin?')) return;
+    await supabase.from('keycodes').delete().eq('id', id);
     await fetchData();
-  };await supabase.from('character_stories').delete().eq('id', id);
+  };
+
+  const handleToggleKeycodeActive = async (kc) => {
+    await supabase.from('keycodes').update({ active: !kc.active }).eq('id', kc.id);
     await fetchData();
   };
 
@@ -269,11 +309,16 @@ export default function AdminScreen() {
           📜 Karakter Hikayeleri ({charStories.length})
         </button>
         <button
-          className={`btn btn-sm ${tab === 'versions' ? 'btn-gold' : 'btn-ghost'}`}
-          onClick={() => setTab('versions')}
-          style={{ color: tab === 'versions' ? undefined : '#4CAF50' }}
+          className={`btn btn-sm ${tab === 'storycards' ? 'btn-gold' : 'btn-ghost'}`}
+          onClick={() => setTab('storycards')}
         >
-          🚀 Sürüm Yayınla ({appVersions.length})
+          🎴 DM Kartları ({dmStoryCards.length})
+        </button>
+        <button
+          className={`btn btn-sm ${tab === 'keycodes' ? 'btn-gold' : 'btn-ghost'}`}
+          onClick={() => setTab('keycodes')}
+        >
+          🔑 Kodlar ({keycodes.length})
         </button>
       </div>
 
@@ -315,6 +360,10 @@ export default function AdminScreen() {
                     <input type="number" className="input input--sm" value={editingChar.defense} onChange={(e) => setEditingChar({ ...editingChar, defense: Number(e.target.value) })} />
                   </label>
                   <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Çeviklik</span>
+                    <input type="number" className="input input--sm" value={editingChar.agility} onChange={(e) => setEditingChar({ ...editingChar, agility: Number(e.target.value) })} />
+                  </label>
+                  <label className="flex flex-col gap-xs">
                     <span className="text-dim text-sm">Zeka</span>
                     <input type="number" className="input input--sm" value={editingChar.intelligence} onChange={(e) => setEditingChar({ ...editingChar, intelligence: Number(e.target.value) })} />
                   </label>
@@ -354,7 +403,7 @@ export default function AdminScreen() {
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-dark)', color: 'var(--text-dim)' }}>
                     <th style={{ textAlign: 'left', padding: '8px 6px' }}>İsim</th>
-                    <th>❤️</th><th>⚔</th><th>🛡</th><th>🧠</th><th>👑</th>
+                    <th>❤️</th><th>⚔</th><th>🛡</th><th>🏃</th><th>🧠</th><th>👑</th>
                     <th>Nadirlik</th><th>💰</th><th></th>
                   </tr>
                 </thead>
@@ -365,6 +414,7 @@ export default function AdminScreen() {
                       <td style={{ textAlign: 'center' }}>{c.health}</td>
                       <td style={{ textAlign: 'center' }}>{c.attack}</td>
                       <td style={{ textAlign: 'center' }}>{c.defense}</td>
+                      <td style={{ textAlign: 'center' }}>{c.agility ?? '-'}</td>
                       <td style={{ textAlign: 'center' }}>{c.intelligence ?? '-'}</td>
                       <td style={{ textAlign: 'center' }}>{c.charisma ?? '-'}</td>
                       <td style={{ textAlign: 'center', color: rarityColor(c.rarity), fontWeight: 700 }}>{c.rarity}</td>
@@ -665,56 +715,145 @@ export default function AdminScreen() {
           </>
         )}
 
-        {/* ======= VERSIONS TAB ======= */}
-        {tab === 'versions' && !loading && (
+        {/* ======= DM STORY CARDS TAB ======= */}
+        {tab === 'storycards' && !loading && (
           <>
             <div className="flex items-center justify-between mb-md">
-              <h3 style={{ color: 'var(--gold)', fontFamily: 'var(--font-display)' }}>🚀 Sürüm Yönetimi</h3>
-              <div className="flex items-center gap-sm">
-                <span className="text-dim text-sm">Mevcut: v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'}</span>
-                <button className="btn btn-gold btn-sm" onClick={() => setPublishVersion({ ...emptyVersion })}>+ Yeni Sürüm Yayınla</button>
-              </div>
+              <h3 style={{ color: 'var(--gold)', fontFamily: 'var(--font-display)' }}>DM Kopya Kartları</h3>
+              <button className="btn btn-gold btn-sm" onClick={() => setEditingStoryCard({ ...emptyStoryCard })}>+ Yeni Kart</button>
             </div>
 
-            {publishVersion && (
-              <div className="parchment-panel" style={{ padding: 16, marginBottom: 16, border: '2px solid #4CAF50' }}>
-                <h4 style={{ color: '#4CAF50', marginBottom: 12 }}>🚀 Yeni Sürüm Yayınla</h4>
+            {editingStoryCard && (
+              <div className="parchment-panel" style={{ padding: 16, marginBottom: 16, border: '1px solid var(--gold-dim)' }}>
+                <h4 style={{ color: 'var(--gold)', marginBottom: 12 }}>{editingStoryCard.id ? '✏ Düzenle' : '+ Yeni DM Kartı'}</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <label className="flex flex-col gap-xs">
-                    <span className="text-dim text-sm">Sürüm Numarası *</span>
-                    <input
-                      className="input input--sm"
-                      placeholder="1.1.0"
-                      value={publishVersion.version}
-                      onChange={(e) => setPublishVersion({ ...publishVersion, version: e.target.value })}
-                    />
+                    <span className="text-dim text-sm">Kategori</span>
+                    <select className="input input--sm" value={editingStoryCard.category} onChange={(e) => setEditingStoryCard({ ...editingStoryCard, category: e.target.value })}>
+                      {STORY_CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                    </select>
                   </label>
                   <label className="flex flex-col gap-xs">
-                    <span className="text-dim text-sm">İndirme Linki (GitHub Release vb.)</span>
-                    <input
-                      className="input input--sm"
-                      placeholder="https://github.com/.../releases/download/..."
-                      value={publishVersion.download_url}
-                      onChange={(e) => setPublishVersion({ ...publishVersion, download_url: e.target.value })}
-                    />
+                    <span className="text-dim text-sm">Alt Kategori</span>
+                    <input className="input input--sm" value={editingStoryCard.subcategory || ''} onChange={(e) => setEditingStoryCard({ ...editingStoryCard, subcategory: e.target.value })} />
+                  </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Başlık</span>
+                    <input className="input input--sm" value={editingStoryCard.title} onChange={(e) => setEditingStoryCard({ ...editingStoryCard, title: e.target.value })} />
+                  </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Zorluk</span>
+                    <select className="input input--sm" value={editingStoryCard.difficulty} onChange={(e) => setEditingStoryCard({ ...editingStoryCard, difficulty: e.target.value })}>
+                      {STORY_DIFFICULTIES.map(d => <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-xs" style={{ gridColumn: 'span 2' }}>
+                    <span className="text-dim text-sm">Skill Check</span>
+                    <input className="input input--sm" placeholder="d20 → 7+zeka" value={editingStoryCard.skill_check || ''} onChange={(e) => setEditingStoryCard({ ...editingStoryCard, skill_check: e.target.value })} />
                   </label>
                 </div>
                 <label className="flex flex-col gap-xs" style={{ marginTop: 10 }}>
-                  <span className="text-dim text-sm">Sürüm Notları *</span>
-                  <textarea
-                    className="input input--sm"
-                    rows={6}
-                    placeholder="Bu sürümde neler değişti..."
-                    value={publishVersion.release_notes}
-                    onChange={(e) => setPublishVersion({ ...publishVersion, release_notes: e.target.value })}
-                    style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                  />
+                  <span className="text-dim text-sm">İçerik</span>
+                  <textarea className="input input--sm" rows={4} value={editingStoryCard.content || ''} onChange={(e) => setEditingStoryCard({ ...editingStoryCard, content: e.target.value })} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
                 </label>
                 <div className="flex gap-sm" style={{ marginTop: 12 }}>
-                  <button className="btn btn-gold btn-sm" onClick={handlePublishVersion} style={{ background: '#4CAF50', borderColor: '#4CAF50' }}>
-                    🚀 Yayınla
+                  <button className="btn btn-gold btn-sm" onClick={handleSaveStoryCard}>💾 Kaydet</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingStoryCard(null)}>İptal</button>
+                </div>
+              </div>
+            )}
+
+            {/* Category Filter */}
+            <div className="flex gap-xs" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+              <button className={`btn btn-sm ${storyCardFilter === 'all' ? 'btn-gold' : 'btn-ghost'}`} onClick={() => setStoryCardFilter('all')}>Tümü ({dmStoryCards.length})</button>
+              {STORY_CATEGORIES.map(cat => {
+                const count = dmStoryCards.filter(c => c.category === cat).length;
+                return (
+                  <button key={cat} className={`btn btn-sm ${storyCardFilter === cat ? 'btn-gold' : 'btn-ghost'}`} onClick={() => setStoryCardFilter(cat)}>
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)} ({count})
                   </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setPublishVersion(null)}>İptal</button>
+                );
+              })}
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-dark)', color: 'var(--text-dim)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 6px' }}>Kategori</th>
+                    <th style={{ textAlign: 'left' }}>Başlık</th>
+                    <th>Zorluk</th>
+                    <th>Check</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dmStoryCards
+                    .filter(c => storyCardFilter === 'all' || c.category === storyCardFilter)
+                    .map(card => (
+                    <tr key={card.id} style={{ borderBottom: '1px solid var(--parchment-mid)' }}>
+                      <td style={{ padding: '6px', fontSize: 11 }}>
+                        <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{card.category}</span>
+                        {card.subcategory && <span className="text-dim"> / {card.subcategory}</span>}
+                      </td>
+                      <td style={{ padding: '6px', fontFamily: 'var(--font-heading)', color: 'var(--gold)' }}>
+                        {card.title}
+                        <div className="text-dim" style={{ fontSize: 10 }}>{card.content?.substring(0, 60)}...</div>
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: 11, color: card.difficulty === 'efsanevi' ? '#FF9800' : card.difficulty === 'zor' ? '#f44336' : card.difficulty === 'orta' ? '#2196F3' : '#4CAF50' }}>
+                        {card.difficulty}
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)' }}>{card.skill_check}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div className="flex gap-xs" style={{ justifyContent: 'flex-end' }}>
+                          <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setEditingStoryCard({ ...card })}>✏</button>
+                          <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => handleDeleteStoryCard(card.id)}>🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* ======= KEYCODES TAB ======= */}
+        {tab === 'keycodes' && !loading && (
+          <>
+            <div className="flex items-center justify-between mb-md">
+              <h3 style={{ color: 'var(--gold)', fontFamily: 'var(--font-display)' }}>🔑 Promosyon Kodları</h3>
+              <button className="btn btn-gold btn-sm" onClick={() => setEditingKeycode({ ...emptyKeycode })}>+ Yeni Kod</button>
+            </div>
+
+            {editingKeycode && (
+              <div className="parchment-panel" style={{ padding: 16, marginBottom: 16, border: '1px solid var(--gold-dim)' }}>
+                <h4 style={{ color: 'var(--gold)', marginBottom: 12 }}>{editingKeycode.id ? '✏ Düzenle' : '+ Yeni Kod'}</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Kod (otomatik büyük harf)</span>
+                    <input className="input input--sm" placeholder="VULPAX2024" value={editingKeycode.code} onChange={(e) => setEditingKeycode({ ...editingKeycode, code: e.target.value })} style={{ textTransform: 'uppercase', letterSpacing: 2, fontFamily: 'monospace' }} />
+                  </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Altın Ödülü</span>
+                    <input type="number" className="input input--sm" value={editingKeycode.gold_reward} onChange={(e) => setEditingKeycode({ ...editingKeycode, gold_reward: Number(e.target.value) })} />
+                  </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Maks. Kullanım</span>
+                    <input type="number" className="input input--sm" min={1} value={editingKeycode.max_uses} onChange={(e) => setEditingKeycode({ ...editingKeycode, max_uses: Number(e.target.value) })} />
+                  </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">Bitiş Tarihi (boş = süresiz)</span>
+                    <input type="datetime-local" className="input input--sm" value={editingKeycode.expires_at ? editingKeycode.expires_at.substring(0, 16) : ''} onChange={(e) => setEditingKeycode({ ...editingKeycode, expires_at: e.target.value ? new Date(e.target.value).toISOString() : '' })} />
+                  </label>
+                  <label className="flex items-center gap-xs" style={{ gridColumn: 'span 2' }}>
+                    <input type="checkbox" checked={editingKeycode.active} onChange={(e) => setEditingKeycode({ ...editingKeycode, active: e.target.checked })} />
+                    <span className="text-dim text-sm">Aktif</span>
+                  </label>
+                </div>
+                <div className="flex gap-sm" style={{ marginTop: 12 }}>
+                  <button className="btn btn-gold btn-sm" onClick={handleSaveKeycode}>💾 Kaydet</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingKeycode(null)}>İptal</button>
                 </div>
               </div>
             )}
@@ -723,30 +862,41 @@ export default function AdminScreen() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-dark)', color: 'var(--text-dim)' }}>
-                    <th style={{ textAlign: 'left', padding: '8px 6px' }}>Sürüm</th>
-                    <th style={{ textAlign: 'left' }}>Notlar</th>
-                    <th>Tarih</th>
+                    <th style={{ textAlign: 'left', padding: '8px 6px' }}>Kod</th>
+                    <th>🪙 Ödül</th>
+                    <th>Kullanım</th>
+                    <th>Bitiş</th>
+                    <th>Durum</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {appVersions.map((v, i) => (
-                    <tr key={v.id} style={{ borderBottom: '1px solid var(--parchment-mid)', background: i === 0 ? 'rgba(76,175,80,0.08)' : undefined }}>
-                      <td style={{ padding: '6px', fontFamily: 'var(--font-heading)', color: i === 0 ? '#4CAF50' : 'var(--gold)' }}>
-                        v{v.version}
-                        {i === 0 && <span style={{ marginLeft: 8, fontSize: 9, background: '#4CAF50', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>GÜNCEL</span>}
-                      </td>
-                      <td style={{ padding: '6px' }}>
-                        <div className="text-dim" style={{ fontSize: 11, whiteSpace: 'pre-line' }}>{v.release_notes?.substring(0, 120)}{v.release_notes?.length > 120 ? '...' : ''}</div>
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>
-                        {new Date(v.created_at).toLocaleDateString('tr-TR')}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => handleDeleteVersion(v.id)}>🗑</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {keycodes.map(kc => {
+                    const expired = kc.expires_at && new Date(kc.expires_at) < new Date();
+                    const full = kc.used_count >= kc.max_uses;
+                    return (
+                      <tr key={kc.id} style={{ borderBottom: '1px solid var(--parchment-mid)', opacity: (!kc.active || expired || full) ? 0.5 : 1 }}>
+                        <td style={{ padding: '6px', fontFamily: 'monospace', letterSpacing: 2, color: 'var(--gold)', fontWeight: 700 }}>{kc.code}</td>
+                        <td style={{ textAlign: 'center', color: '#FFD700' }}>{kc.gold_reward}</td>
+                        <td style={{ textAlign: 'center' }}>{kc.used_count} / {kc.max_uses}</td>
+                        <td style={{ textAlign: 'center', fontSize: 10 }}>{kc.expires_at ? new Date(kc.expires_at).toLocaleDateString('tr-TR') : '♾ Süresiz'}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span
+                            style={{ cursor: 'pointer', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: kc.active && !expired && !full ? 'rgba(76,175,80,.2)' : 'rgba(244,67,54,.2)', color: kc.active && !expired && !full ? '#4CAF50' : '#f44336' }}
+                            onClick={() => handleToggleKeycodeActive(kc)}
+                          >
+                            {expired ? 'Süresi Doldu' : full ? 'Tükendi' : kc.active ? 'Aktif' : 'Pasif'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="flex gap-xs" style={{ justifyContent: 'flex-end' }}>
+                            <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setEditingKeycode({ ...kc })}>✏</button>
+                            <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => handleDeleteKeycode(kc.id)}>🗑</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

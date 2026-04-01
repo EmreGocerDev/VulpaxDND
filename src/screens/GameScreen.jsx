@@ -18,6 +18,7 @@ import DMNotes from '../components/DMNotes';
 import CombatCalculator from '../components/CombatCalculator';
 import AchievementPanel from '../components/AchievementPanel';
 import PartyLoot from '../components/PartyLoot';
+import MonsterBook from '../components/MonsterBook';
 
 export default function GameScreen() {
   const { roomId } = useParams();
@@ -91,6 +92,52 @@ export default function GameScreen() {
     return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
 
+  // Map drawer states
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapMarkers, setMapMarkers] = useState([]);
+  const [hoveredMarker, setHoveredMarker] = useState(null);
+  const mapRef = useRef(null);
+  const choseSfxRef = useRef(new Audio('./assest/chose.mp3'));
+
+  // Fetch map markers & subscribe to realtime
+  useEffect(() => {
+    if (!roomId) return;
+    supabase.from('map_markers').select('*').eq('room_id', roomId).then(({ data }) => {
+      if (data) setMapMarkers(data);
+    });
+    const channel = supabase.channel(`map_markers_${roomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'map_markers', filter: `room_id=eq.${roomId}` }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setMapMarkers(prev => [...prev.filter(m => m.user_id !== payload.new.user_id), payload.new]);
+        } else if (payload.eventType === 'UPDATE') {
+          setMapMarkers(prev => prev.map(m => m.id === payload.new.id ? payload.new : m));
+        } else if (payload.eventType === 'DELETE') {
+          setMapMarkers(prev => prev.filter(m => m.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [roomId]);
+
+  const handleMapClick = async (e) => {
+    if (!mapRef.current || !profile) return;
+    const rect = mapRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const sfx = choseSfxRef.current;
+    const s = JSON.parse(localStorage.getItem('vulpax_settings') || '{}');
+    sfx.volume = (s.gameSfxVolume ?? 50) / 100;
+    sfx.currentTime = 0;
+    sfx.play().catch(() => {});
+    const displayName = profile.display_name || profile.username || 'Anonim';
+    const existing = mapMarkers.find(m => m.user_id === profile.id);
+    if (existing) {
+      await supabase.from('map_markers').update({ x, y, user_name: displayName }).eq('id', existing.id);
+    } else {
+      await supabase.from('map_markers').insert({ room_id: roomId, user_id: profile.id, user_name: displayName, x, y });
+    }
+  };
+
   if (!currentRoom || !profile) {
     return (
       <div className="screen flex items-center justify-center">
@@ -101,6 +148,37 @@ export default function GameScreen() {
 
   return (
     <div className="screen" style={{ padding: '16px 24px', overflow: 'hidden' }}>
+      {/* Map Drawer — pull down from top center */}
+      <div className={`map-drawer ${mapOpen ? 'map-drawer--open' : ''}`}>
+        <div className="map-drawer__handle" onClick={() => setMapOpen(!mapOpen)}>
+          <span className="map-drawer__handle-icon">{mapOpen ? '▲' : '▼'}</span>
+          <span>🗺️ Harita</span>
+          <span className="map-drawer__handle-icon">{mapOpen ? '▲' : '▼'}</span>
+        </div>
+        {mapOpen && (
+          <div className="map-drawer__content">
+            <div className="map-drawer__image-wrap" ref={mapRef} onClick={handleMapClick}>
+              <img src="./assest/map.png" alt="Harita" className="map-drawer__image" draggable={false} />
+              {/* Knife markers */}
+              {mapMarkers.map(marker => (
+                <div
+                  key={marker.id}
+                  className="map-marker"
+                  style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+                  onMouseEnter={() => setHoveredMarker(marker.id)}
+                  onMouseLeave={() => setHoveredMarker(null)}
+                >
+                  <img src="./assest/knife.png" alt="marker" className="map-marker__knife" draggable={false} />
+                  {hoveredMarker === marker.id && (
+                    <div className="map-marker__tooltip">{marker.user_name}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Top Bar */}
       <div className="screen__header" style={{ marginBottom: 16 }}>
         <div className="flex items-center gap-md">
@@ -341,12 +419,27 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const [viewingCard, setViewingCard] = useState(null); // card detail popup for DM
   const [showDmNotes, setShowDmNotes] = useState(false); // DM notes popup
   const [dmNotesText, setDmNotesText] = useState(() => localStorage.getItem(`dm_notes_${roomId}`) || '');
-  const [viewingCharacter, setViewingCharacter] = useState(null); // character detail popup
+  const [showStoryCards, setShowStoryCards] = useState(false); // DM story cards panel
+  const [storyCards, setStoryCards] = useState([]);
+  const [storyCardCategory, setStoryCardCategory] = useState('yol');
+  const [storyCardExpanded, setStoryCardExpanded] = useState(null); // expanded card id
+
+  // Fetch DM story cards
+  useEffect(() => {
+    if (!isDM) return;
+    supabase.from('dm_story_cards').select('*').order('category').order('subcategory').then(({ data }) => {
+      if (data) setStoryCards(data);
+    });
+  }, [isDM]);
+
+  const [showMonsterBook, setShowMonsterBook] = useState(false); // monster bestiary book
+  const [viewingCharacter, setViewingCharacter] = useState(null); // character detail popup (DM cockpit)
+  const [viewingProfile, setViewingProfile] = useState(null); // character profile in chat area (everyone)
   const [charSelectOverlay, setCharSelectOverlay] = useState(null); // broadcast char select
   const [diceOverlay, setDiceOverlay] = useState(null); // broadcast dice roll fullscreen
   const [seenActionIds, setSeenActionIds] = useState(new Set()); // track processed actions
   const seenSfxIds = useRef(new Set()); // track SFX-processed actions (ref to avoid re-render loops)
-  const { updateMemberHealth, updateMemberStatus, updateMemberAttackBonus, updateMemberDefenseBonus, updateMemberPoison, updateMemberStun } = useRoomStore();
+  const { updateMemberHealth, updateMemberStatus, updateMemberAttackBonus, updateMemberDefenseBonus, updateMemberPoison, updateMemberStun, updateMemberAgilityBonus, updateMemberIntelligenceBonus, updateMemberCharismaBonus } = useRoomStore();
 
   // Card system v2 states
   const [cardConfirm, setCardConfirm] = useState(null); // {power, step:'confirm'|'target'}
@@ -796,6 +889,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const handleSetTurn = async () => {
     const m = members.find((mm) => mm.id === turnPlayer);
     if (!m) return;
+
     setCurrentTurnId(m.user_id);
     setCardUsedThisTurn(false);
     setPendingCard(null);
@@ -1115,10 +1209,11 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 key={member.id}
                 className={`simple-player-card ${selectedTarget === member.id ? 'simple-player-card--selected' : ''} ${isTurn ? 'simple-player-card--turn' : ''} ${statusClass}`}
                 onClick={() => {
+                  setViewingProfile(member);
                   if (isDM) {
                     setSelectedTarget(member.id);
                     if (member.characters) setViewingCharacter(member);
-                  } else if (member.characters) setViewingCharacter(member);
+                  }
                 }}
                 style={{ cursor: 'pointer' }}
               >
@@ -1160,35 +1255,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
             );
           })}
 
-          {isDM && selectedTarget && targetMember && (
-            <div className="simple-dm-quick" style={{ marginTop: 8 }}>
-              <div className="text-gold text-sm mb-sm" style={{ fontFamily: 'var(--font-heading)' }}>
-                🎯 {targetMember.profiles?.username}
-              </div>
-              <div className="flex flex-col gap-sm">
-                <div className="flex gap-sm items-center">
-                  <input type="number" className="input input--sm" style={{ width: 60 }} value={damageAmount} onChange={(e) => setDamageAmount(Math.max(0, Number(e.target.value)))} min={0} />
-                  <button className="btn btn-danger btn-sm" onClick={handleDealDamage} style={{ flex: 1 }}>⚔ Hasar</button>
-                </div>
-                <div className="flex gap-sm items-center">
-                  <input type="number" className="input input--sm" style={{ width: 60 }} value={healAmount} onChange={(e) => setHealAmount(Math.max(0, Number(e.target.value)))} min={0} />
-                  <button className="btn btn-primary btn-sm" onClick={handleHeal} style={{ flex: 1 }}>💚 İyileştir</button>
-                </div>
-                <div className="flex gap-sm">
-                  <button className="btn btn-danger btn-sm" onClick={handleKill} style={{ flex: 1, fontSize: 11 }}>💀 Öldür</button>
-                  <button className="btn btn-gold btn-sm" onClick={handleRevive} style={{ flex: 1, fontSize: 11 }}>✨ Dirilt</button>
-                </div>
-                <div className="flex gap-sm">
-                  <button className="btn btn-ghost btn-sm" onClick={handleStun} style={{ flex: 1, fontSize: 11 }}>💫 Sersemlet</button>
-                  <button className="btn btn-ghost btn-sm" onClick={handlePoison} style={{ flex: 1, fontSize: 11 }}>🧪 Zehirle</button>
-                </div>
-                <div className="flex gap-sm">
-                  <button className="btn btn-primary btn-sm" onClick={handleBuff} style={{ flex: 1, fontSize: 11 }}>⬆️ Buff</button>
-                  <button className="btn btn-danger btn-sm" onClick={handleDebuff} style={{ flex: 1, fontSize: 11 }}>⬇️ Debuff</button>
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Dice Tray */}
@@ -1374,10 +1441,122 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
           </div>
         </div>
         <div className="parchment-panel" style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: 15, marginBottom: 12, flexShrink: 0 }}>💬 Sohbet</h3>
-          <div className="vulpax-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            <ChatBox roomId={roomId} />
-          </div>
+          {viewingProfile ? (() => {
+            const vp = members.find(m => m.id === viewingProfile.id) || viewingProfile;
+            const vpMaxHp = vp.characters?.health || 100;
+            const vpHpPercent = Math.max(0, (vp.current_health / vpMaxHp) * 100);
+            const vpHpClass = vpHpPercent > 60 ? 'high' : vpHpPercent > 30 ? 'mid' : 'low';
+            return (
+              <>
+                <div className="flex items-center justify-between" style={{ flexShrink: 0, marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 15 }}>📋 Karakter Profili</h3>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setViewingProfile(null)} style={{ fontSize: 12 }}>💬 Sohbete Dön</button>
+                </div>
+                <div className="vulpax-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                  <div className="char-profile-view">
+                    {/* Portrait */}
+                    <div className="char-profile-view__portrait">
+                      {getCardImage(vp.characters || vp)
+                        ? <img src={getCardImage(vp.characters || vp)} alt="" className="char-profile-view__img" />
+                        : <div className="char-profile-view__img-placeholder">⚔️</div>
+                      }
+                    </div>
+                    {/* Name & Status */}
+                    <div className="char-profile-view__name">{vp.characters?.name || 'Serbest Karakter'}</div>
+                    <div className="char-profile-view__player">{vp.profiles?.username}</div>
+                    {vp.characters?.rarity && (
+                      <div className="card-detail-popup__rarity" data-rarity={vp.characters.rarity} style={{ margin: '6px auto' }}>
+                        {vp.characters.rarity.toUpperCase()}
+                      </div>
+                    )}
+                    <span className={`badge badge--${vp.status}`} style={{ fontSize: 11, margin: '4px auto', display: 'inline-block' }}>{vp.status}</span>
+
+                    {/* HP Bar */}
+                    <div style={{ margin: '12px 0 4px' }}>
+                      <div className="health-bar" style={{ height: 14, borderRadius: 7 }}>
+                        <div className={`health-bar__fill health-bar__fill--${vpHpClass}`} style={{ width: `${vpHpPercent}%` }} />
+                      </div>
+                      <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--gold)', marginTop: 4, fontFamily: 'var(--font-heading)' }}>
+                        ❤️ {vp.current_health} / {vpMaxHp}
+                      </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="char-profile-view__stats">
+                      <div className="char-profile-view__stat">
+                        <div className="char-profile-view__stat-icon">⚔️</div>
+                        <div className="char-profile-view__stat-label">Saldırı</div>
+                        <div className="char-profile-view__stat-val">
+                          {(vp.characters?.attack || 0)}
+                          {(vp.attack_bonus || 0) !== 0 && <span style={{ color: (vp.attack_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.attack_bonus || 0) > 0 ? '+' : ''}{vp.attack_bonus || 0}</span>}
+                        </div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.attack || 0) + (vp.attack_bonus || 0)}</div>
+                      </div>
+                      <div className="char-profile-view__stat">
+                        <div className="char-profile-view__stat-icon">🛡️</div>
+                        <div className="char-profile-view__stat-label">Savunma</div>
+                        <div className="char-profile-view__stat-val">
+                          {(vp.characters?.defense || 0)}
+                          {(vp.defense_bonus || 0) !== 0 && <span style={{ color: (vp.defense_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.defense_bonus || 0) > 0 ? '+' : ''}{vp.defense_bonus || 0}</span>}
+                        </div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.defense || 0) + (vp.defense_bonus || 0)}</div>
+                      </div>
+                      <div className="char-profile-view__stat">
+                        <div className="char-profile-view__stat-icon">🏃</div>
+                        <div className="char-profile-view__stat-label">Çeviklik</div>
+                        <div className="char-profile-view__stat-val">
+                          {(vp.characters?.agility || 0)}
+                          {(vp.agility_bonus || 0) !== 0 && <span style={{ color: (vp.agility_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.agility_bonus || 0) > 0 ? '+' : ''}{vp.agility_bonus || 0}</span>}
+                        </div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.agility || 0) + (vp.agility_bonus || 0)}</div>
+                      </div>
+                      <div className="char-profile-view__stat">
+                        <div className="char-profile-view__stat-icon">🧠</div>
+                        <div className="char-profile-view__stat-label">Zeka</div>
+                        <div className="char-profile-view__stat-val">
+                          {(vp.characters?.intelligence || 0)}
+                          {(vp.intelligence_bonus || 0) !== 0 && <span style={{ color: (vp.intelligence_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.intelligence_bonus || 0) > 0 ? '+' : ''}{vp.intelligence_bonus || 0}</span>}
+                        </div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.intelligence || 0) + (vp.intelligence_bonus || 0)}</div>
+                      </div>
+                      <div className="char-profile-view__stat">
+                        <div className="char-profile-view__stat-icon">✨</div>
+                        <div className="char-profile-view__stat-label">Karizma</div>
+                        <div className="char-profile-view__stat-val">
+                          {(vp.characters?.charisma || 0)}
+                          {(vp.charisma_bonus || 0) !== 0 && <span style={{ color: (vp.charisma_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.charisma_bonus || 0) > 0 ? '+' : ''}{vp.charisma_bonus || 0}</span>}
+                        </div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.charisma || 0) + (vp.charisma_bonus || 0)}</div>
+                      </div>
+                    </div>
+
+                    {/* Status Effects */}
+                    {(vp.poison_turns > 0 || vp.stun_turns > 0) && (
+                      <div className="char-profile-view__effects">
+                        {vp.poison_turns > 0 && (
+                          <div className="char-profile-view__effect char-profile-view__effect--poison">
+                            🧪 Zehir: {vp.poison_turns} tur ({vp.poison_value} hasar/tur)
+                          </div>
+                        )}
+                        {vp.stun_turns > 0 && (
+                          <div className="char-profile-view__effect char-profile-view__effect--stun">
+                            💫 Sersemletme: {vp.stun_turns} tur
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })() : (
+            <>
+              <h3 style={{ fontSize: 15, marginBottom: 12, flexShrink: 0 }}>💬 Sohbet</h3>
+              <div className="vulpax-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                <ChatBox roomId={roomId} />
+              </div>
+            </>
+          )}
         </div>
         {/* DM Controls: Narrate + Turn (between Chat and Voice) */}
         {isDM && (
@@ -1535,6 +1714,14 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
           >
             🃏
           </button>
+          {/* DM Story Cards FAB */}
+          <button
+            className="dm-fab dm-fab--story"
+            onClick={() => setShowStoryCards(!showStoryCards)}
+            title="Kopya Kartları"
+          >
+            📖
+          </button>
 
           {/* Music Dropdown */}
           {showMusicMenu && (
@@ -1573,88 +1760,242 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
               />
             </div>
           )}
+
+          {/* DM Story Cards Panel */}
+          {showStoryCards && (
+            <div className="dm-story-panel">
+              <div className="dm-story-panel__header">
+                <h3>📖 Kopya Kartları</h3>
+                <button className="dm-notes-popup__close" onClick={() => setShowStoryCards(false)}>✕</button>
+              </div>
+              <div className="dm-story-panel__categories">
+                {[
+                  { key: 'yol', icon: '🛤️', label: 'Yol' },
+                  { key: 'zindan', icon: '🏰', label: 'Zindan' },
+                  { key: 'arkadaslik', icon: '🤝', label: 'Arkadaşlık' },
+                  { key: 'festival', icon: '🎪', label: 'Festival' },
+                  { key: 'savas', icon: '⚔️', label: 'Savaş' },
+                  { key: 'gizem', icon: '🔮', label: 'Gizem' },
+                  { key: 'tuzak', icon: '🪤', label: 'Tuzak' },
+                  { key: 'ticaret', icon: '💰', label: 'Ticaret' },
+                  { key: 'ceviklik', icon: '🏃', label: 'Çeviklik' },
+                ].map(cat => (
+                  <button
+                    key={cat.key}
+                    className={`dm-story-cat-btn ${storyCardCategory === cat.key ? 'dm-story-cat-btn--active' : ''}`}
+                    onClick={() => { setStoryCardCategory(cat.key); setStoryCardExpanded(null); }}
+                  >
+                    {cat.icon} {cat.label}
+                  </button>
+                ))}
+              </div>
+              <div className="dm-story-panel__list vulpax-scroll">
+                {storyCards
+                  .filter(c => c.category === storyCardCategory)
+                  .map(card => (
+                    <div
+                      key={card.id}
+                      className={`dm-story-card ${storyCardExpanded === card.id ? 'dm-story-card--expanded' : ''}`}
+                      onClick={() => setStoryCardExpanded(storyCardExpanded === card.id ? null : card.id)}
+                    >
+                      <div className="dm-story-card__header">
+                        <span className="dm-story-card__title">{card.title}</span>
+                        <span className={`dm-story-card__diff dm-story-card__diff--${card.difficulty}`}>
+                          {card.difficulty}
+                        </span>
+                      </div>
+                      {card.subcategory && (
+                        <span className="dm-story-card__sub">{card.subcategory}</span>
+                      )}
+                      {storyCardExpanded === card.id && (
+                        <div className="dm-story-card__body">
+                          <p>{card.content}</p>
+                          {card.skill_check && (
+                            <div className="dm-story-card__check">🎲 {card.skill_check}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* Character Detail Popup (clicking on a player) */}
-      {viewingCharacter && (
-        <div className="card-detail-overlay" onClick={() => setViewingCharacter(null)}>
-          <div className="card-detail-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="card-detail-popup__close" onClick={() => setViewingCharacter(null)}>✕</button>
-            <div className="card-detail-popup__image" style={getCardImage(viewingCharacter.characters || viewingCharacter) ? { backgroundImage: `url(${getCardImage(viewingCharacter.characters || viewingCharacter)})` } : { background: 'var(--darker-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, color: 'var(--text-dim)' }}>{!getCardImage(viewingCharacter.characters || viewingCharacter) && '⚔️'}</div>
-            <div className="card-detail-popup__content">
-              <div className="card-detail-popup__icon">⚔️</div>
-              <h2 className="card-detail-popup__name">{viewingCharacter.characters?.name || '?'}</h2>
-              <div className="card-detail-popup__type">
-                {viewingCharacter.profiles?.username || 'Oyuncu'}
-              </div>
-              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 8 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 24 }}>❤️</div>
-                  <div style={{ color: 'var(--gold)', fontFamily: 'var(--font-heading)', fontSize: 18 }}>{viewingCharacter.current_health}/{viewingCharacter.characters?.health || '?'}</div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>CAN</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 24 }}>⚔️</div>
-                  <div style={{ color: 'var(--gold)', fontFamily: 'var(--font-heading)', fontSize: 18 }}>
-                    {viewingCharacter.characters?.attack || 0}
-                    {(viewingCharacter.attack_bonus || 0) !== 0 && (
-                      <span style={{ color: (viewingCharacter.attack_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 14 }}>
-                        {(viewingCharacter.attack_bonus || 0) > 0 ? '+' : ''}{viewingCharacter.attack_bonus || 0}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>SALDIRI {(viewingCharacter.attack_bonus || 0) !== 0 && `= ${(viewingCharacter.characters?.attack || 0) + (viewingCharacter.attack_bonus || 0)}`}</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 24 }}>🛡️</div>
-                  <div style={{ color: 'var(--gold)', fontFamily: 'var(--font-heading)', fontSize: 18 }}>
-                    {viewingCharacter.characters?.defense || 0}
-                    {(viewingCharacter.defense_bonus || 0) !== 0 && (
-                      <span style={{ color: (viewingCharacter.defense_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 14 }}>
-                        {(viewingCharacter.defense_bonus || 0) > 0 ? '+' : ''}{viewingCharacter.defense_bonus || 0}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>SAVUNMA {(viewingCharacter.defense_bonus || 0) !== 0 && `= ${(viewingCharacter.characters?.defense || 0) + (viewingCharacter.defense_bonus || 0)}`}</div>
-                </div>
-              </div>
-              {/* Intelligence & Charisma (info only) */}
-              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 20 }}>🧠</div>
-                  <div style={{ color: 'var(--gold)', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{viewingCharacter.characters?.intelligence || '?'}</div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>ZEKA</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 20 }}>👑</div>
-                  <div style={{ color: 'var(--gold)', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{viewingCharacter.characters?.charisma || '?'}</div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>KARİZMA</div>
+      {/* Monster Book FAB — visible to everyone */}
+      <button
+        className="monster-book-fab"
+        onClick={() => setShowMonsterBook(true)}
+        title="Canavarlar Kitabı"
+      >
+        <span>▲</span>
+        <span>📕 Canavarlar Kitabı</span>
+        <span>▲</span>
+      </button>
+      {showMonsterBook && <MonsterBook onClose={() => setShowMonsterBook(false)} />}
+
+      {/* Character Detail — DM only: cockpit from bottom */}
+
+      {/* DM Cockpit — slides up from bottom */}
+      {viewingCharacter && isDM && (() => {
+        const vc = members.find(m => m.id === viewingCharacter.id) || viewingCharacter;
+        return (
+        <div className="dm-cockpit">
+          <div className="dm-cockpit__header">
+            <div className="dm-cockpit__title">
+              🎮 DM Kokpiti — {vc.characters?.name || vc.profiles?.username || '?'}
+            </div>
+            <button className="dm-cockpit__close" onClick={() => setViewingCharacter(null)}>✕</button>
+          </div>
+          <div className="dm-cockpit__body">
+            {/* Portrait */}
+            <div className="dm-cockpit__portrait">
+              {getCardImage(vc.characters || vc)
+                ? <img src={getCardImage(vc.characters || vc)} alt="" className="dm-cockpit__portrait-img" />
+                : <div className="dm-cockpit__portrait-placeholder">⚔️</div>
+              }
+              <div className="dm-cockpit__portrait-name">{vc.profiles?.username}</div>
+              <span className={`badge badge--${vc.status}`} style={{ fontSize: 10, marginTop: 4 }}>{vc.status}</span>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="dm-cockpit__stats">
+              {/* HP */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">❤️ CAN</div>
+                <div className="dm-cockpit__stat-value">{vc.current_health} / {vc.characters?.health || '?'}</div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = Math.max(0, vc.current_health - 10); await updateMemberHealth(vc.id, v); playSfx('sword'); await sendAction(`⚔ ${vc.profiles?.username} → 10 hasar aldı! (${v} HP kaldı)`); }}>-10</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = Math.max(0, vc.current_health - 1); await updateMemberHealth(vc.id, v); playSfx('sword'); await sendAction(`⚔ ${vc.profiles?.username} → 1 hasar aldı! (${v} HP kaldı)`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="HP" min="0" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { const v = Math.max(0, Math.min(vc.characters?.health || 999, val)); updateMemberHealth(vc.id, v); sendAction(`❤️ ${vc.profiles?.username} HP → ${v} olarak ayarlandı`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = Math.min(vc.characters?.health || 999, vc.current_health + 1); await updateMemberHealth(vc.id, v); playSfx('alive'); await sendAction(`💚 ${vc.profiles?.username} → 1 HP iyileşti! (${v} HP)`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = Math.min(vc.characters?.health || 999, vc.current_health + 10); await updateMemberHealth(vc.id, v); playSfx('alive'); await sendAction(`💚 ${vc.profiles?.username} → 10 HP iyileşti! (${v} HP)`); }}>+10</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--max" onClick={async () => { const v = vc.characters?.health || 100; await updateMemberHealth(vc.id, v); playSfx('alive'); await sendAction(`💚 ${vc.profiles?.username} full HP! (${v})`); }}>MAX</button>
                 </div>
               </div>
-              {/* Poison / Stun info */}
-              {(viewingCharacter.poison_turns > 0 || viewingCharacter.stun_turns > 0) && (
-                <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {viewingCharacter.poison_turns > 0 && (
-                    <span className="badge badge--poisoned" style={{ fontSize: 10 }}>🧪 Zehir: {viewingCharacter.poison_turns} tur ({viewingCharacter.poison_value}/tur)</span>
-                  )}
-                  {viewingCharacter.stun_turns > 0 && (
-                    <span className="badge badge--stunned" style={{ fontSize: 10 }}>💫 Sersemletme: {viewingCharacter.stun_turns} tur</span>
-                  )}
+
+              {/* Attack Bonus */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">⚔️ SALDIRI BONUS</div>
+                <div className="dm-cockpit__stat-value">
+                  {(vc.characters?.attack || 0)} <span style={{ color: (vc.attack_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.attack_bonus || 0) >= 0 ? '+' : ''}{vc.attack_bonus || 0}</span> = {(vc.characters?.attack || 0) + (vc.attack_bonus || 0)}
                 </div>
-              )}
-              {viewingCharacter.characters?.rarity && (
-                <div className="card-detail-popup__rarity" data-rarity={viewingCharacter.characters.rarity} style={{ marginTop: 8 }}>
-                  {viewingCharacter.characters.rarity.toUpperCase()}
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.attack_bonus || 0) - 5; await updateMemberAttackBonus(vc.id, v); await sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.attack_bonus || 0) - 1; await updateMemberAttackBonus(vc.id, v); await sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="Bonus" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { updateMemberAttackBonus(vc.id, val); sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu: ${val >= 0 ? '+' : ''}${val}`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.attack_bonus || 0) + 1; await updateMemberAttackBonus(vc.id, v); await sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.attack_bonus || 0) + 5; await updateMemberAttackBonus(vc.id, v); await sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+5</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberAttackBonus(vc.id, 0); await sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu sıfırlandı`); }}>Sıfırla</button>
                 </div>
-              )}
-              <div style={{ marginTop: 8 }}>
-                <span className={`badge badge--${viewingCharacter.status}`}>{viewingCharacter.status}</span>
+              </div>
+
+              {/* Defense Bonus */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">🛡️ SAVUNMA BONUS</div>
+                <div className="dm-cockpit__stat-value">
+                  {(vc.characters?.defense || 0)} <span style={{ color: (vc.defense_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.defense_bonus || 0) >= 0 ? '+' : ''}{vc.defense_bonus || 0}</span> = {(vc.characters?.defense || 0) + (vc.defense_bonus || 0)}
+                </div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.defense_bonus || 0) - 5; await updateMemberDefenseBonus(vc.id, v); await sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.defense_bonus || 0) - 1; await updateMemberDefenseBonus(vc.id, v); await sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="Bonus" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { updateMemberDefenseBonus(vc.id, val); sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu: ${val >= 0 ? '+' : ''}${val}`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.defense_bonus || 0) + 1; await updateMemberDefenseBonus(vc.id, v); await sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.defense_bonus || 0) + 5; await updateMemberDefenseBonus(vc.id, v); await sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+5</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberDefenseBonus(vc.id, 0); await sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu sıfırlandı`); }}>Sıfırla</button>
+                </div>
+              </div>
+
+              {/* Agility Bonus */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">🏃 ÇEVİKLİK BONUS</div>
+                <div className="dm-cockpit__stat-value">
+                  {(vc.characters?.agility || 0)} <span style={{ color: (vc.agility_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.agility_bonus || 0) >= 0 ? '+' : ''}{vc.agility_bonus || 0}</span> = {(vc.characters?.agility || 0) + (vc.agility_bonus || 0)}
+                </div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.agility_bonus || 0) - 5; await updateMemberAgilityBonus(vc.id, v); await sendAction(`🏃 ${vc.profiles?.username} çeviklik bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.agility_bonus || 0) - 1; await updateMemberAgilityBonus(vc.id, v); await sendAction(`🏃 ${vc.profiles?.username} çeviklik bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="Bonus" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { updateMemberAgilityBonus(vc.id, val); sendAction(`🏃 ${vc.profiles?.username} çeviklik bonusu: ${val >= 0 ? '+' : ''}${val}`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.agility_bonus || 0) + 1; await updateMemberAgilityBonus(vc.id, v); await sendAction(`🏃 ${vc.profiles?.username} çeviklik bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.agility_bonus || 0) + 5; await updateMemberAgilityBonus(vc.id, v); await sendAction(`🏃 ${vc.profiles?.username} çeviklik bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+5</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberAgilityBonus(vc.id, 0); await sendAction(`🏃 ${vc.profiles?.username} çeviklik bonusu sıfırlandı`); }}>Sıfırla</button>
+                </div>
+              </div>
+
+              {/* Intelligence Bonus */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">🧠 ZEKA BONUS</div>
+                <div className="dm-cockpit__stat-value">
+                  {(vc.characters?.intelligence || 0)} <span style={{ color: (vc.intelligence_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.intelligence_bonus || 0) >= 0 ? '+' : ''}{vc.intelligence_bonus || 0}</span> = {(vc.characters?.intelligence || 0) + (vc.intelligence_bonus || 0)}
+                </div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.intelligence_bonus || 0) - 5; await updateMemberIntelligenceBonus(vc.id, v); await sendAction(`🧠 ${vc.profiles?.username} zeka bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.intelligence_bonus || 0) - 1; await updateMemberIntelligenceBonus(vc.id, v); await sendAction(`🧠 ${vc.profiles?.username} zeka bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="Bonus" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { updateMemberIntelligenceBonus(vc.id, val); sendAction(`🧠 ${vc.profiles?.username} zeka bonusu: ${val >= 0 ? '+' : ''}${val}`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.intelligence_bonus || 0) + 1; await updateMemberIntelligenceBonus(vc.id, v); await sendAction(`🧠 ${vc.profiles?.username} zeka bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.intelligence_bonus || 0) + 5; await updateMemberIntelligenceBonus(vc.id, v); await sendAction(`🧠 ${vc.profiles?.username} zeka bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+5</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberIntelligenceBonus(vc.id, 0); await sendAction(`🧠 ${vc.profiles?.username} zeka bonusu sıfırlandı`); }}>Sıfırla</button>
+                </div>
+              </div>
+
+              {/* Charisma Bonus */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">✨ KARİZMA BONUS</div>
+                <div className="dm-cockpit__stat-value">
+                  {(vc.characters?.charisma || 0)} <span style={{ color: (vc.charisma_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.charisma_bonus || 0) >= 0 ? '+' : ''}{vc.charisma_bonus || 0}</span> = {(vc.characters?.charisma || 0) + (vc.charisma_bonus || 0)}
+                </div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.charisma_bonus || 0) - 5; await updateMemberCharismaBonus(vc.id, v); await sendAction(`✨ ${vc.profiles?.username} karizma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.charisma_bonus || 0) - 1; await updateMemberCharismaBonus(vc.id, v); await sendAction(`✨ ${vc.profiles?.username} karizma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="Bonus" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { updateMemberCharismaBonus(vc.id, val); sendAction(`✨ ${vc.profiles?.username} karizma bonusu: ${val >= 0 ? '+' : ''}${val}`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.charisma_bonus || 0) + 1; await updateMemberCharismaBonus(vc.id, v); await sendAction(`✨ ${vc.profiles?.username} karizma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.charisma_bonus || 0) + 5; await updateMemberCharismaBonus(vc.id, v); await sendAction(`✨ ${vc.profiles?.username} karizma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>+5</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberCharismaBonus(vc.id, 0); await sendAction(`✨ ${vc.profiles?.username} karizma bonusu sıfırlandı`); }}>Sıfırla</button>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">📋 DURUM</div>
+                <div className="dm-cockpit__stat-value"><span className={`badge badge--${vc.status}`}>{vc.status}</span></div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberStatus(vc.id, 'alive'); playSfx('alive'); await sendAction(`✅ ${vc.profiles?.username} artık canlı!`); }}>Canlı</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { await updateMemberHealth(vc.id, 0); await updateMemberStatus(vc.id, 'dead'); playSfx('die'); await sendAction(`💀 ${vc.profiles?.username} öldü!`); }}>Öldür</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { const maxHp = vc.characters?.health || 100; const v = Math.floor(maxHp / 2); await updateMemberHealth(vc.id, v); await updateMemberStatus(vc.id, 'alive'); playSfx('alive'); await sendAction(`✨ ${vc.profiles?.username} hayata döndü! (${v} HP)`); }}>Dirilt</button>
+                  <button className="dm-cockpit__btn" style={{ background: '#9C27B0' }} onClick={async () => { await updateMemberStatus(vc.id, 'buffed'); await sendAction(`⬆️ ${vc.profiles?.username} buff aldı!`); }}>Buff</button>
+                </div>
+              </div>
+
+              {/* Poison */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">🧪 ZEHİR</div>
+                <div className="dm-cockpit__stat-value">{vc.poison_turns > 0 ? `${vc.poison_turns} tur (${vc.poison_value}/tur)` : 'Yok'}</div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberPoison(vc.id, 3, 5); await updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); await sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (3 tur, 5 hasar/tur)`); }}>3T/5D</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberPoison(vc.id, 5, 10); await updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); await sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (5 tur, 10 hasar/tur)`); }}>5T/10D</button>
+                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { const dmgInput = e.target.nextElementSibling; const dmg = parseInt(dmgInput?.value) || 5; updateMemberPoison(vc.id, val, dmg); updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (${val} tur, ${dmg} hasar/tur)`); e.target.value = ''; if (dmgInput) dmgInput.value = ''; } }}} />
+                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Dmg" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); const turInput = e.target.previousElementSibling; const tur = parseInt(turInput?.value) || 3; if (!isNaN(val) && val > 0) { updateMemberPoison(vc.id, tur, val); updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (${tur} tur, ${val} hasar/tur)`); e.target.value = ''; if (turInput) turInput.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberPoison(vc.id, 0, 0); if (vc.stun_turns <= 0) await updateMemberStatus(vc.id, 'alive'); await sendAction(`🧪 ${vc.profiles?.username} zehir temizlendi!`); }}>Temizle</button>
+                </div>
+              </div>
+
+              {/* Stun */}
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">💫 SERSEMLETME</div>
+                <div className="dm-cockpit__stat-value">{vc.stun_turns > 0 ? `${vc.stun_turns} tur` : 'Yok'}</div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberStun(vc.id, 1); await updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (1 tur)`); }}>1 Tur</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberStun(vc.id, 3); await updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (3 tur)`); }}>3 Tur</button>
+                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { updateMemberStun(vc.id, val); updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); sendAction(`💫 ${vc.profiles?.username} sersemledi! (${val} tur)`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberStun(vc.id, 0); if (vc.poison_turns <= 0) await updateMemberStatus(vc.id, 'alive'); await sendAction(`💫 ${vc.profiles?.username} sersemletme temizlendi!`); }}>Temizle</button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      )}
+      );
+      })()}
 
       {/* Broadcast: Character Selection Overlay (visible to everyone) */}
       {charSelectOverlay && (
