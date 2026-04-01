@@ -79,6 +79,20 @@ export const useAuthStore = create((set, get) => ({
     set({ user: null, profile: null });
   },
 
+  resetPassword: async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'vulpax-dnd://auth-callback',
+    });
+    if (error) throw error;
+  },
+
+  updatePassword: async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (error) throw error;
+  },
+
   updateGold: async (amount) => {
     const profile = get().profile;
     if (profile) {

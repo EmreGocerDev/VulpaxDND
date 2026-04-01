@@ -35,6 +35,9 @@ export default defineConfig({
     warmup: {
       clientFiles: ['./src/main.jsx', './src/App.jsx', './src/styles/global.css'],
     },
+    watch: {
+      ignored: ['**/release/**', '**/build/**', '**/node_modules/**', '**/.git/**', '**/assests/**'],
+    },
   },
   build: {
     outDir: 'dist',

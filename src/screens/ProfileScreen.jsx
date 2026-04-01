@@ -16,6 +16,12 @@ export default function ProfileScreen() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Password change
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+
   useEffect(() => {
     if (profile) {
       setUsername(profile?.username || '');
@@ -103,6 +109,30 @@ export default function ProfileScreen() {
       toast.error('Yükleme başarısız: ' + err.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('Şifre en az 6 karakter olmalı');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Şifreler eşleşmiyor');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast.success('Şifre başarıyla güncellendi!');
+      setNewPassword('');
+      setConfirmPassword('');
+      setChangingPassword(false);
+    } catch (err) {
+      toast.error('Şifre güncellenemedi: ' + err.message);
+    } finally {
+      setPwLoading(false);
     }
   };
 
@@ -224,46 +254,137 @@ export default function ProfileScreen() {
           <div className="parchment-panel">
             <h3 className="mb-md">📧 Hesap</h3>
             <p className="text-dim text-sm mb-md">E-posta: {user?.email || '-'}</p>
-            <button className="btn btn-danger btn-sm" onClick={signOut}>
-              Çıkış Yap
-            </button>
+
+            {/* Şifre Değiştir */}
+            {!changingPassword ? (
+              <div className="flex gap-md">
+                <button className="btn btn-ghost btn-sm" onClick={() => setChangingPassword(true)}>
+                  🔑 Şifre Değiştir
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={signOut}>
+                  Çıkış Yap
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-sm" style={{ marginTop: 8 }}>
+                <div className="divider" />
+                <p style={{ color: 'var(--gold)', fontFamily: 'var(--font-heading)', fontSize: 14 }}>🔑 Yeni Şifre</p>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Yeni şifre (min. 6 karakter)"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  maxLength={64}
+                />
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Şifreyi tekrar gir"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  maxLength={64}
+                />
+                <div className="flex gap-md">
+                  <button className="btn btn-primary btn-sm" onClick={handleChangePassword} disabled={pwLoading}>
+                    {pwLoading ? '...' : '✅ Kaydet'}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setChangingPassword(false); setNewPassword(''); setConfirmPassword(''); }}>
+                    İptal
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right: Inventory Overview */}
         <div className="flex flex-col gap-lg">
+          {/* Characters Slider */}
           <div className="parchment-panel">
-            <h3 className="mb-md">⚔ Karakterlerin ({ownedCharacters.length})</h3>
+            <h3 className="mb-md">⚔️ Karakterlerin ({ownedCharacters.length})</h3>
             {ownedCharacters.length === 0 ? (
               <p className="text-dim text-sm">Henüz karakter yok. Marketten satın al!</p>
             ) : (
-              <div className="flex flex-col gap-sm">
-                {ownedCharacters.map((char) => (
-                  <div key={char.id} className="profile-item">
-                    <span>⚔️ {char.name}</span>
-                    <div className="flex gap-sm">
-                      <span className="badge badge--alive">❤️{char.health}</span>
-                      <span className="badge badge--dm">⚔️{char.attack}</span>
-                      <span className="badge badge--lobby">🛡️{char.defense}</span>
+              <div style={{
+                display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8,
+                scrollbarWidth: 'thin', scrollbarColor: 'var(--gold) var(--parchment-dark)'
+              }}>
+                {ownedCharacters.map((char) => {
+                  const rarityColor = { common: '#9e9e9e', uncommon: '#4caf50', rare: '#2196f3', epic: '#9c27b0', legendary: '#ffc107' }[char.rarity] || 'var(--gold)';
+                  return (
+                    <div key={char.id} style={{
+                      minWidth: 130, background: 'var(--parchment-dark)',
+                      border: `2px solid ${rarityColor}`,
+                      borderRadius: 10, padding: '12px 10px', textAlign: 'center',
+                      boxShadow: `0 0 10px ${rarityColor}44`, flexShrink: 0,
+                    }}>
+                      <div style={{
+                        width: 54, height: 54, borderRadius: '50%',
+                        background: 'var(--parchment-mid)', margin: '0 auto 8px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 28, border: `2px solid ${rarityColor}`,
+                        overflow: 'hidden'
+                      }}>
+                        {char.image_path
+                          ? <img src={`/assests/characters/${char.image_path}`} alt={char.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display='none'; e.target.parentNode.textContent='⚔️'; }} />
+                          : '⚔️'}
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-heading)', color: rarityColor, fontSize: 13, marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {char.name}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {[['❤️', char.health, '#e53935'], ['⚔️', char.attack, '#ffc107'], ['🛡️', char.defense, '#42a5f5']].map(([icon, val, color]) => (
+                          <div key={icon} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ fontSize: 11 }}>{icon}</span>
+                            <div style={{ flex: 1, height: 5, background: 'var(--parchment-mid)', borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.min(100, (val / 200) * 100)}%`, height: '100%', background: color, borderRadius: 3 }} />
+                            </div>
+                            <span style={{ fontSize: 10, color: 'var(--text-secondary)', minWidth: 20 }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
+          {/* Powers Slider */}
           <div className="parchment-panel">
             <h3 className="mb-md">✨ Güçlerin ({ownedPowers.length})</h3>
             {ownedPowers.length === 0 ? (
               <p className="text-dim text-sm">Henüz güç kartı yok. Marketten satın al!</p>
             ) : (
-              <div className="flex flex-col gap-sm">
-                {ownedPowers.map((power) => (
-                  <div key={power.id} className="profile-item">
-                    <span>✨ {power.name}</span>
-                    <span className="text-dim text-sm">{power.effect_type} +{power.effect_value}</span>
-                  </div>
-                ))}
+              <div style={{
+                display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8,
+                scrollbarWidth: 'thin', scrollbarColor: 'var(--gold) var(--parchment-dark)'
+              }}>
+                {ownedPowers.map((power) => {
+                  const rarityColor = { common: '#9e9e9e', uncommon: '#4caf50', rare: '#2196f3', epic: '#9c27b0', legendary: '#ffc107' }[power.rarity] || 'var(--gold)';
+                  const effectIcon = { saldiri: '⚔️', zehir: '☠️', sersemletme: '😵', diriltme: '💚', can: '❤️', savunma: '🛡️', atak: '💥', savunmakirici: '🔓', atakkirici: '💔' }[power.effect_type] || '✨';
+                  return (
+                    <div key={power.id} style={{
+                      minWidth: 110, background: 'var(--parchment-dark)',
+                      border: `2px solid ${rarityColor}`,
+                      borderRadius: 10, padding: '12px 10px', textAlign: 'center',
+                      boxShadow: `0 0 10px ${rarityColor}44`, flexShrink: 0,
+                    }}>
+                      <div style={{ fontSize: 32, marginBottom: 6 }}>{effectIcon}</div>
+                      <div style={{ fontFamily: 'var(--font-heading)', color: rarityColor, fontSize: 12, marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {power.name}
+                      </div>
+                      <div style={{
+                        background: `${rarityColor}22`, border: `1px solid ${rarityColor}66`,
+                        borderRadius: 6, padding: '3px 6px', fontSize: 11, color: rarityColor, marginBottom: 4
+                      }}>
+                        {power.effect_type}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>+{power.effect_value}</div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

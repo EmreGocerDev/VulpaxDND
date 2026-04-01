@@ -6,6 +6,55 @@ const { autoUpdater } = require('electron-updater');
 const isDev = !app.isPackaged;
 
 let mainWindow;
+let deeplinkUrl = null;
+
+// Deep link protokolünü kaydet (Windows ve Linux için)
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('vulpax-dnd', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('vulpax-dnd');
+}
+
+// Single instance lock - aynı anda sadece bir instance çalışsın
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Kullanıcı ikinci bir instance açmaya çalıştı
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      
+      // Windows'ta deep link URL'i commandLine'dan al
+      const url = commandLine.find((arg) => arg.startsWith('vulpax-dnd://'));
+      if (url) {
+        handleDeepLink(url);
+      }
+    }
+  });
+}
+
+// Deep link'i işle
+function handleDeepLink(url) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    // Window henüz hazır değilse, URL'i sakla
+    deeplinkUrl = url;
+    return;
+  }
+
+  // URL'i web içeriğine gönder
+  mainWindow.webContents.send('deep-link', url);
+}
+
+// macOS için open-url eventi
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -46,9 +95,25 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  // Sayfa yüklendiğinde bekleyen deep link varsa işle
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (deeplinkUrl) {
+      handleDeepLink(deeplinkUrl);
+      deeplinkUrl = null;
+    }
+  });
 }
 
 app.whenReady().then(() => {
+  // Windows için başlangıç argumentlerinde deep link varsa kaydet
+  if (process.platform === 'win32' && process.argv.length >= 2) {
+    const url = process.argv.find((arg) => arg.startsWith('vulpax-dnd://'));
+    if (url) {
+      deeplinkUrl = url;
+    }
+  }
+
   createWindow();
 
   // Auto-updater (only in production)

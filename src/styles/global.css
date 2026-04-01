@@ -5003,3 +5003,56 @@ h3 { font-size: 18px; }
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* ==================== Death / Alive Overlay ==================== */
+.death-alive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease-out;
+  cursor: pointer;
+}
+.death-alive-overlay--death {
+  background: rgba(30, 0, 0, 0.92);
+}
+.death-alive-overlay--alive {
+  background: rgba(0, 20, 10, 0.92);
+}
+.death-alive-overlay__content {
+  text-align: center;
+  animation: deathAlivePop 0.6s ease-out;
+}
+.death-alive-overlay__image {
+  width: 560px;
+  height: 560px;
+  object-fit: contain;
+  margin-bottom: 24px;
+  position: relative;
+  z-index: 1;
+}
+.death-alive-overlay--death .death-alive-overlay__image {
+  filter: drop-shadow(0 0 80px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 120px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 30px rgba(255, 0, 0, 0.3));
+}
+.death-alive-overlay--alive .death-alive-overlay__image {
+  filter: drop-shadow(0 0 60px rgba(0, 255, 100, 0.5)) drop-shadow(0 0 30px rgba(0, 255, 100, 0.3));
+}
+.death-alive-overlay__text {
+  font-family: var(--font-display);
+  font-size: 42px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 20px currentColor;
+}
+.death-alive-overlay__text--death {
+  color: #ff4444;
+}
+.death-alive-overlay__text--alive {
+  color: #44ff88;
+}
+@keyframes deathAlivePop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}

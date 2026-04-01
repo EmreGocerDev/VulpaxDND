@@ -180,7 +180,6 @@ export default function MarketScreen() {
           { key: 'characters', label: '⚔ Karakterler' },
           { key: 'powers', label: '✨ Güçler' },
           { key: 'titles', label: '🏅 Ünvanlar' },
-          { key: 'lootboxes', label: '📦 Kasalar' },
           { key: 'keycode', label: '🔑 Kod Kullan' },
           { key: 'inventory', label: '🎒 Envanter' },
         ].map((t) => (
@@ -315,34 +314,6 @@ export default function MarketScreen() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Lootboxes Tab */}
-      {tab === 'lootboxes' && (
-        <div className="grid-3">
-          {lootboxes.map((box) => (
-            <div key={box.id} className="card card--rare" style={{ textAlign: 'center' }}>
-              <div className="card__image" style={{ fontSize: 64 }}>📦</div>
-              <div className="card__body">
-                <div className="card__title">{box.name}</div>
-                <p className="text-dim text-sm" style={{ margin: '8px 0' }}>{box.description}</p>
-                <div className="text-sm mb-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {Object.entries(box.drop_rates).map(([rarity, rate]) => (
-                    <span key={rarity} style={{ marginRight: 8 }}>
-                      {RARITY_ICONS[rarity]} {rate}%
-                    </span>
-                  ))}
-                </div>
-                <button
-                  className="btn btn-primary w-full"
-                  onClick={() => handleOpenLootbox(box)}
-                >
-                  🪙 {box.gold_cost} Altın ile Aç
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 

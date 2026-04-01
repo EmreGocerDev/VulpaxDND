@@ -437,6 +437,8 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const [viewingProfile, setViewingProfile] = useState(null); // character profile in chat area (everyone)
   const [charSelectOverlay, setCharSelectOverlay] = useState(null); // broadcast char select
   const [diceOverlay, setDiceOverlay] = useState(null); // broadcast dice roll fullscreen
+  const [deathOverlay, setDeathOverlay] = useState(null); // death overlay { name }
+  const [aliveOverlay, setAliveOverlay] = useState(null); // revival overlay { name }
   const [seenActionIds, setSeenActionIds] = useState(new Set()); // track processed actions
   const seenSfxIds = useRef(new Set()); // track SFX-processed actions (ref to avoid re-render loops)
   const { updateMemberHealth, updateMemberStatus, updateMemberAttackBonus, updateMemberDefenseBonus, updateMemberPoison, updateMemberStun, updateMemberAgilityBonus, updateMemberIntelligenceBonus, updateMemberCharismaBonus } = useRoomStore();
@@ -741,8 +743,19 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
       seenSfxIds.current.add(action.id);
       const msg = action.action_value?.message || '';
       if (action.action_type === 'dm_action') {
-        if (msg.includes('öldü')) playSfx('die');
-        else if (msg.includes('hayata döndü')) playSfx('alive');
+        if (msg.includes('öldü')) {
+          playSfx('die');
+          // Extract player name from message (e.g. "💀 PlayerName öldü!")
+          const nameMatch = msg.match(/💀\s*(.+?)\s*(?:zehirden\s+)?öldü/);
+          setDeathOverlay({ name: nameMatch ? nameMatch[1] : '???' });
+          setTimeout(() => setDeathOverlay(null), 3000);
+        }
+        else if (msg.includes('hayata döndü') || msg.includes('diriltildi')) {
+          playSfx('alive');
+          const nameMatch = msg.match(/✨\s*(?:.+?→\s*)?(.+?)\s*(?:hayata döndü|diriltildi)/);
+          setAliveOverlay({ name: nameMatch ? nameMatch[1] : '???' });
+          setTimeout(() => setAliveOverlay(null), 3000);
+        }
         else if (msg.includes('sersemledi')) playSfx('stun');
         else if (msg.includes('zehirlendi')) playSfx('potion');
         else if (msg.includes('hasar aldı')) playSfx('sword');
@@ -2084,6 +2097,30 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="turn-announce-overlay__title">&lt;{turnOverlay.title}&gt;</div>
               )}
               <div className="turn-announce-overlay__label">⚔ Sıra Sende!</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Death Overlay */}
+      {deathOverlay && (
+        <div className="death-alive-overlay death-alive-overlay--death" onClick={() => setDeathOverlay(null)}>
+          <div className="death-alive-overlay__content">
+            <img src="./assest/die.png" alt="Öldü" className="death-alive-overlay__image" />
+            <div className="death-alive-overlay__text death-alive-overlay__text--death">
+              {deathOverlay.name} öldü...
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alive/Revival Overlay */}
+      {aliveOverlay && (
+        <div className="death-alive-overlay death-alive-overlay--alive" onClick={() => setAliveOverlay(null)}>
+          <div className="death-alive-overlay__content">
+            <img src="./assest/alive.png" alt="Hayata Döndü" className="death-alive-overlay__image" />
+            <div className="death-alive-overlay__text death-alive-overlay__text--alive">
+              {aliveOverlay.name} hayata döndü!
             </div>
           </div>
         </div>
