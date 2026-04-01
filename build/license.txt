@@ -1,96 +1,82 @@
-═══════════════════════════════════════════════════
-        VULPAX DnD — KULLANIM SÖZLEŞMESİ
-═══════════════════════════════════════════════════
+VULPAX DnD — TERMS OF USE
+Last Updated: April 1, 2026
 
-Son Güncelleme: 1 Nisan 2026
+This Terms of Use Agreement ("Agreement") is entered into between the person ("User") who downloads, installs, or uses the Vulpax DnD application ("Application") and the developer ("Vulpax").
 
-Bu Kullanım Sözleşmesi ("Sözleşme"), Vulpax DnD uygulamasını 
-("Uygulama") indiren, kuran veya kullanan kişi ("Kullanıcı") ile 
-geliştirici ("Vulpax") arasında yapılmıştır.
+1. ACCEPTANCE
+By installing and using this Application, you declare that you have read, understood, and agreed to all terms of this agreement.
 
-1. KABUL
-────────
-Bu uygulamayı kurarak ve kullanarak, bu sözleşmenin tüm 
-şartlarını okuduğunuzu, anladığınızı ve kabul ettiğinizi 
-beyan etmiş olursunuz.
+2. LICENSE
+Vulpax grants you a limited, non-exclusive, non-transferable license to use this Application for personal and non-commercial purposes. This license:
 
-2. LİSANS
-──────────
-Vulpax size bu uygulamayı kişisel ve ticari olmayan amaçlarla 
-kullanmanız için sınırlı, münhasır olmayan, devredilemez bir 
-lisans vermektedir. Bu lisans:
-  • Uygulamayı kopyalamanıza, dağıtmanıza veya satmanıza 
-    izin vermez.
-  • Uygulamanın kaynak kodunu tersine mühendislik yapmanıza 
-    izin vermez.
-  • Uygulamayı değiştirip yeniden dağıtmanıza izin vermez.
+Does not allow you to copy, distribute, or sell the Application.
 
-3. HESAP ve VERİ
-────────────────
-  • Uygulama, Supabase altyapısı üzerinden çalışmaktadır.
-  • Kayıt olurken verdiğiniz e-posta ve kullanıcı adı bilgileri 
-    saklanır.
-  • Şifreleriniz güvenli şekilde hash'lenerek depolanır.
-  • Oyun içi ilerlemeniz, karakterleriniz ve envanter bilgileriniz 
-    sunucuda saklanır.
+Does not allow you to reverse engineer the source code of the Application.
 
-4. OYUN İÇİ PARA ve MARKET
-───────────────────────────
-  • Oyun içi altın tamamen sanal bir para birimidir.
-  • Altın ile satın alınan karakter, güç kartı ve ünvanlar 
-    gerçek bir maddi değer taşımaz.
-  • Promosyon kodları ile kazanılan altın iade edilemez.
-  • Geliştirici, oyun ekonomisinde dilediği zaman değişiklik 
-    yapma hakkını saklı tutar.
+Does not allow you to modify and redistribute the Application.
 
-5. DAVRANIŞLAR
-──────────────
-Kullanıcı şunları yapmamayı kabul eder:
-  • Hile, exploit veya bot kullanmak.
-  • Diğer kullanıcılara karşı taciz, nefret söylemi veya 
-    uygunsuz davranışlarda bulunmak.
-  • Sunucuya saldırı (DDoS, injection vb.) girişiminde bulunmak.
-  • Hesabını başkasına devretmek veya satmak.
+3. ACCOUNT AND DATA
+The Application operates via the Supabase infrastructure.
 
-İhlal durumunda hesabınız kalıcı olarak kapatılabilir.
+Email addresses and usernames provided during registration are stored.
 
-6. GİZLİLİK
-────────────
-  • Kişisel verileriniz üçüncü taraflarla paylaşılmaz.
-  • Verileriniz yalnızca uygulamanın işlevselliği için kullanılır.
-  • Hesap silme talebiniz durumunda tüm verileriniz silinir.
+Passwords are stored securely using hashing methods.
 
-7. SORUMLULUK REDDİ
-────────────────────
-  • Uygulama "olduğu gibi" sunulmaktadır.
-  • Geliştirici, uygulamanın kesintisiz veya hatasız çalışacağını 
-    garanti etmez.
-  • Veri kaybı, bağlantı sorunları veya üçüncü taraf 
-    hizmetlerinden kaynaklanan aksaklıklardan sorumlu değildir.
+In-game progress, characters, and inventory information are stored on the server.
 
-8. GÜNCELLEMELER
-────────────────
-  • Uygulama otomatik güncelleme özelliği içerir.
-  • Güncellemeler yeni özellikler, hata düzeltmeleri veya 
-    güvenlik yamaları içerebilir.
-  • Güncelleme sonrası bazı özellikler değişebilir veya 
-    kaldırılabilir.
+4. IN-GAME CURRENCY AND MARKET
+In-game "Gold" is a purely virtual currency.
 
-9. FESİH
-────────
-  • İstediğiniz zaman uygulamayı kaldırarak bu sözleşmeyi 
-    feshedebilirsiniz.
-  • Geliştirici, sözleşme ihlali durumunda lisansınızı 
-    tek taraflı olarak feshedebilir.
+Characters, power cards, and titles purchased with Gold hold no real-world monetary value.
 
-10. DEĞİŞİKLİKLER
-──────────────────
-  • Bu sözleşme önceden bildirimde bulunmaksızın 
-    güncellenebilir.
-  • Güncellenmiş sözleşme uygulama içinden erişilebilir olacaktır.
-  • Uygulamayı kullanmaya devam etmeniz, güncel sözleşmeyi 
-    kabul ettiğiniz anlamına gelir.
+Gold earned through promotional codes is non-refundable.
 
-═══════════════════════════════════════════════════
-       © 2026 Vulpax — Tüm hakları saklıdır.
-═══════════════════════════════════════════════════
+The developer reserves the right to change the in-game economy at any time.
+
+5. CONDUCT
+The User agrees not to:
+
+Use cheats, exploits, or bots.
+
+Engage in harassment, hate speech, or inappropriate behavior towards other users.
+
+Attempt attacks on the server (DDoS, injection, etc.).
+
+Transfer or sell their account to others.
+
+In case of violation, your account may be permanently banned.
+
+6. PRIVACY
+Your personal data is not shared with third parties.
+
+Data is used solely for the functionality of the Application.
+
+In case of an account deletion request, all your data will be wiped.
+
+7. DISCLAIMER OF WARRANTY
+The Application is provided "as is".
+
+The developer does not guarantee that the Application will function uninterrupted or error-free.
+
+The developer is not responsible for data loss, connection issues, or disruptions caused by third-party services.
+
+8. UPDATES
+The Application includes an automatic update feature.
+
+Updates may include new features, bug fixes, or security patches.
+
+Following an update, some features may change or be removed.
+
+9. TERMINATION
+You may terminate this agreement at any time by uninstalling the Application.
+
+The developer may unilaterally terminate your license in case of a breach of contract.
+
+10. AMENDMENTS
+This agreement may be updated without prior notice.
+
+The updated agreement will be accessible within the Application.
+
+Continued use of the Application constitutes acceptance of the updated terms.
+
+© 2026 Vulpax — All rights reserved.
