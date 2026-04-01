@@ -1,7 +1,7 @@
 {
   "name": "vulpax-dnd",
   "author": "Emre VULPAX Gocer <vulpaxcomtr@gmail.com>",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Masaüstü tabanlı DnD mekaniklerinden ilham alan çok oyunculu RPG",
   "main": "electron/main.js",
   "scripts": {

@@ -11,7 +11,7 @@ const path = require('path');
   await page.goto(filePath);
 
   // Wait for components to load (Supabase auth screen etc.)
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(10000);
 
   await page.screenshot({ path: 'macos-preview.png', fullPage: true });
 
