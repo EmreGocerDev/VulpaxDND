@@ -1,5 +1,6 @@
 {
   "name": "vulpax-dnd",
+  "author": "Emre VULPAX Gocer <vulpaxcomtr@gmail.com>",
   "version": "1.1.4",
   "description": "Masaüstü tabanlı DnD mekaniklerinden ilham alan çok oyunculu RPG",
   "main": "electron/main.js",
@@ -65,7 +66,7 @@
     },
     "mac": {
   "target": ["dmg", "zip"],
-  "icon": "assest/logo.png",
+  "icon": "assest/logo.icns",
   "category": "public.app-category.games"
 },
     "nsis": {
