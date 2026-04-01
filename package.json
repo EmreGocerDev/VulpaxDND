@@ -1,7 +1,7 @@
 {
   "name": "vulpax-dnd",
   "author": "Emre VULPAX Gocer <vulpaxcomtr@gmail.com>",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Masaüstü tabanlı DnD mekaniklerinden ilham alan çok oyunculu RPG",
   "main": "electron/main.js",
   "scripts": {
@@ -73,7 +73,11 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Vulpax DND sesli sohbet özelliği için mikrofon erişimi gereklidir.",
+        "NSCameraUsageDescription": "Kamera erişimi gereklidir (kullanılıyorsa ekle)."
+      }
     },
     "nsis": {
       "oneClick": true,
