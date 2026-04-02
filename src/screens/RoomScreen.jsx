@@ -14,7 +14,7 @@ export default function RoomScreen() {
   const {
     currentRoom, members, actions,
     fetchRoomDetails, subscribeToRoom,
-    leaveRoom, startGame,
+    leaveRoom, startGame, kickMember,
   } = useRoomStore();
   const [error, setError] = useState('');
   const [gameMode, setGameMode] = useState('simple'); // simple | test
@@ -33,6 +33,16 @@ export default function RoomScreen() {
       navigate(`/game/${roomId}`, { replace: true });
     }
   }, [currentRoom?.status, roomId, navigate]);
+
+  // Detect if current user was kicked (no longer in members list)
+  useEffect(() => {
+    if (members.length > 0 && profile) {
+      const stillInRoom = members.some(m => m.user_id === profile.id);
+      if (!stillInRoom) {
+        navigate('/', { replace: true });
+      }
+    }
+  }, [members, profile, navigate]);
 
   const handleLeave = async () => {
     if (!profile) return;
@@ -144,6 +154,22 @@ export default function RoomScreen() {
                     <span className={`badge badge--${member.status}`}>
                       {member.status}
                     </span>
+                    {isDM && member.user_id !== currentRoom.dm_id && (
+                      <button
+                        className="btn btn-danger btn-sm"
+                        style={{ padding: '2px 8px', fontSize: 12 }}
+                        onClick={async () => {
+                          try {
+                            await kickMember(roomId, member.user_id);
+                          } catch (err) {
+                            setError(err.message);
+                          }
+                        }}
+                        title="Oyuncuyu at"
+                      >
+                        ❌ At
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

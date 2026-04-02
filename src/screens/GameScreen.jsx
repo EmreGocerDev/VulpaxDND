@@ -720,6 +720,16 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         { file: './assest/music/17.mp3', name: '17' },
         { file: './assest/music/18.mp3', name: '18' },
         { file: './assest/music/19.mp3', name: '19' },
+        { file: './assest/music/agnebogdir_1.mp3', name: 'Agnebogdir 1' },
+        { file: './assest/music/agnebogdir_2.mp3', name: 'Agnebogdir 2' },
+        { file: './assest/music/agnebogdir_3.mp3', name: 'Agnebogdir 3' },
+        { file: './assest/music/agnebogdir_4.mp3', name: 'Agnebogdir 4' },
+        { file: './assest/music/caelestis_axis_1.mp3', name: 'Caelestis Axis 1' },
+        { file: './assest/music/holtrheim_1.mp3', name: 'Höltrheim 1' },
+        { file: './assest/music/holtrheim_2.mp3', name: 'Höltrheim 2' },
+        { file: './assest/music/korku_1.mp3', name: 'Korku 1' },
+        { file: './assest/music/korku_2.mp3', name: 'Korku 2' },
+        { file: './assest/music/mortifodina_1.mp3', name: 'Mortifodina 1' },
       ]);
     };
     loadTracks();

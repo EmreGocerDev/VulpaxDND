@@ -15,7 +15,10 @@ export default function LobbyScreen() {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showPatchNotes, setShowPatchNotes] = useState(false);
   const [roomName, setRoomName] = useState('');
+  const [roomPassword, setRoomPassword] = useState('');
   const [joinCode, setJoinCode] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(null); // roomId for password prompt
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -29,9 +32,10 @@ export default function LobbyScreen() {
     e.preventDefault();
     if (!roomName.trim() || !profile) return;
     try {
-      const room = await createRoom(roomName.trim(), profile.id);
+      const room = await createRoom(roomName.trim(), profile.id, roomPassword);
       setShowCreate(false);
       setRoomName('');
+      setRoomPassword('');
       navigate(`/room/${room.id}`);
     } catch (err) {
       setError(err.message);
@@ -42,22 +46,25 @@ export default function LobbyScreen() {
     e.preventDefault();
     if (!joinCode.trim() || !profile) return;
     try {
-      const room = await joinRoomByCode(joinCode.trim(), profile.id);
+      const room = await joinRoomByCode(joinCode.trim(), profile.id, joinPassword);
       if (room.status === 'playing') {
         navigate(`/game/${room.id}`);
       } else {
         navigate(`/room/${room.id}`);
       }
     } catch (err) {
-      setError(err.message);
+      if (err.message === 'ROOM_PASSWORD_REQUIRED') {
+        setError('Bu oda şifre korumalı. Lütfen şifreyi girin.');
+      } else {
+        setError(err.message);
+      }
     }
   };
 
-  const handleJoinRoom = async (roomId) => {
+  const handleJoinRoom = async (roomId, password = null) => {
     if (!profile) return;
     try {
-      await joinRoom(roomId, profile.id);
-      // Check room status to navigate correctly
+      await joinRoom(roomId, profile.id, password);
       const room = rooms.find(r => r.id === roomId);
       if (room?.status === 'playing') {
         navigate(`/game/${roomId}`);
@@ -65,7 +72,12 @@ export default function LobbyScreen() {
         navigate(`/room/${roomId}`);
       }
     } catch (err) {
-      setError(err.message);
+      if (err.message === 'ROOM_PASSWORD_REQUIRED') {
+        setShowPasswordPrompt(roomId);
+        setJoinPassword('');
+      } else {
+        setError(err.message);
+      }
     }
   };
 
@@ -127,18 +139,34 @@ export default function LobbyScreen() {
       {showCreate && (
         <div className="parchment-panel mb-lg anim-slide" style={{ maxWidth: 500 }}>
           <h3 className="mb-md">Yeni Oda Oluştur</h3>
-          <form onSubmit={handleCreateRoom} className="flex gap-md items-center">
-            <input
-              className="input"
-              placeholder="Oda adı..."
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              maxLength={50}
-              required
-              style={{ flex: 1 }}
-            />
-            <button type="submit" className="btn btn-primary" style={{ textAlign: 'center', justifyContent: 'center', display: 'flex', alignItems: 'center' }}>Oluştur</button>
-            <button type="button" className="btn btn-ghost" style={{ textAlign: 'center', justifyContent: 'center', display: 'flex', alignItems: 'center' }} onClick={() => setShowCreate(false)}>İptal</button>
+          <form onSubmit={handleCreateRoom} className="flex flex-col gap-md">
+            <div className="flex gap-md items-center">
+              <input
+                className="input"
+                placeholder="Oda adı..."
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                maxLength={50}
+                required
+                style={{ flex: 1 }}
+              />
+            </div>
+            <div className="flex gap-md items-center">
+              <input
+                className="input"
+                type="password"
+                placeholder="Oda şifresi (opsiyonel)"
+                value={roomPassword}
+                onChange={(e) => setRoomPassword(e.target.value)}
+                maxLength={30}
+                style={{ flex: 1 }}
+              />
+              <span className="text-dim text-sm" style={{ whiteSpace: 'nowrap' }}>🔒</span>
+            </div>
+            <div className="flex gap-md">
+              <button type="submit" className="btn btn-primary" style={{ textAlign: 'center', justifyContent: 'center', display: 'flex', alignItems: 'center' }}>Oluştur</button>
+              <button type="button" className="btn btn-ghost" style={{ textAlign: 'center', justifyContent: 'center', display: 'flex', alignItems: 'center' }} onClick={() => { setShowCreate(false); setRoomPassword(''); }}>İptal</button>
+            </div>
           </form>
         </div>
       )}
@@ -147,17 +175,31 @@ export default function LobbyScreen() {
       {showJoinCode && (
         <div className="parchment-panel mb-lg anim-slide" style={{ maxWidth: 500 }}>
           <h3 className="mb-md">Oda Kodunu Gir</h3>
-          <form onSubmit={handleJoinByCode} className="flex gap-md">
-            <input
-              className="input"
-              placeholder="Oda kodu..."
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              maxLength={8}
-              required
-            />
-            <button type="submit" className="btn btn-gold">Katıl</button>
-            <button type="button" className="btn btn-ghost" onClick={() => setShowJoinCode(false)}>İptal</button>
+          <form onSubmit={handleJoinByCode} className="flex flex-col gap-md">
+            <div className="flex gap-md">
+              <input
+                className="input"
+                placeholder="Oda kodu..."
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                maxLength={8}
+                required
+              />
+            </div>
+            <div className="flex gap-md">
+              <input
+                className="input"
+                type="password"
+                placeholder="Oda şifresi (varsa)"
+                value={joinPassword}
+                onChange={(e) => setJoinPassword(e.target.value)}
+                maxLength={30}
+              />
+            </div>
+            <div className="flex gap-md">
+              <button type="submit" className="btn btn-gold">Katıl</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowJoinCode(false); setJoinPassword(''); }}>İptal</button>
+            </div>
           </form>
         </div>
       )}
@@ -175,7 +217,10 @@ export default function LobbyScreen() {
           {rooms.map((room) => (
             <div key={room.id} className="room-card">
               <div>
-                <div className="room-card__name">{room.room_name}</div>
+                <div className="room-card__name">
+                  {room.room_password && <span title="Şifre korumalı">🔒 </span>}
+                  {room.room_name}
+                </div>
                 <div className="room-card__info">
                   <span>DM: {room.profiles?.username || '?'}</span>
                   <span>Kod: {room.room_code}</span>
@@ -201,6 +246,37 @@ export default function LobbyScreen() {
         {/* Friends Sidebar */}
         <FriendsSidebar />
       </div>
+
+      {/* Room Password Prompt Modal */}
+      {showPasswordPrompt && (
+        <div className="modal-overlay" onClick={() => setShowPasswordPrompt(null)}>
+          <div className="parchment-panel parchment-panel--ornate anim-slide" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center', padding: '32px 40px' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+            <h2 style={{ fontFamily: 'var(--font-display)', color: 'var(--gold)', marginBottom: 8 }}>Oda Şifresi Gerekli</h2>
+            <p className="text-dim text-sm" style={{ marginBottom: 16 }}>Bu oda şifre korumalı. Girmek için şifreyi yaz.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              await handleJoinRoom(showPasswordPrompt, joinPassword);
+              setShowPasswordPrompt(null);
+            }} className="flex flex-col gap-md">
+              <input
+                className="input"
+                type="password"
+                placeholder="Oda şifresi..."
+                value={joinPassword}
+                onChange={(e) => setJoinPassword(e.target.value)}
+                autoFocus
+                required
+              />
+              {error && <p className="text-red text-sm">{error}</p>}
+              <div className="flex gap-md" style={{ justifyContent: 'center' }}>
+                <button type="submit" className="btn btn-primary">Katıl</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setShowPasswordPrompt(null); setJoinPassword(''); }}>İptal</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Exit Modal */}
       {showExitModal && (

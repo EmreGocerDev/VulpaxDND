@@ -25,11 +25,15 @@ export const useRoomStore = create((set, get) => ({
     }
   },
 
-  createRoom: async (roomName, dmId) => {
+  createRoom: async (roomName, dmId, roomPassword = null) => {
     if (!dmId) throw new Error('Oturum bulunamadı, tekrar giriş yapın');
+    const insertData = { room_name: roomName, dm_id: dmId };
+    if (roomPassword && roomPassword.trim()) {
+      insertData.room_password = roomPassword.trim();
+    }
     const { data, error } = await supabase
       .from('rooms')
-      .insert({ room_name: roomName, dm_id: dmId })
+      .insert(insertData)
       .select()
       .single();
     if (error) throw error;
@@ -43,14 +47,25 @@ export const useRoomStore = create((set, get) => ({
     return data;
   },
 
-  joinRoom: async (roomId, userId) => {
+  joinRoom: async (roomId, userId, password = null) => {
+    // Check if room has a password
+    const { data: room } = await supabase
+      .from('rooms')
+      .select('room_password, dm_id')
+      .eq('id', roomId)
+      .single();
+    if (room?.room_password && room.dm_id !== userId) {
+      if (!password || password !== room.room_password) {
+        throw new Error('ROOM_PASSWORD_REQUIRED');
+      }
+    }
     const { error } = await supabase
       .from('room_members')
       .upsert({ room_id: roomId, user_id: userId }, { onConflict: 'room_id,user_id' });
     if (error) throw error;
   },
 
-  joinRoomByCode: async (code, userId) => {
+  joinRoomByCode: async (code, userId, password = null) => {
     const { data: room } = await supabase
       .from('rooms')
       .select('*')
@@ -59,8 +74,22 @@ export const useRoomStore = create((set, get) => ({
     if (!room) throw new Error('Oda bulunamadı');
     if (room.status === 'finished') throw new Error('Bu oda kapanmış');
 
-    await get().joinRoom(room.id, userId);
+    await get().joinRoom(room.id, userId, password);
     return room;
+  },
+
+  kickMember: async (roomId, userId) => {
+    await supabase
+      .from('room_members')
+      .delete()
+      .eq('room_id', roomId)
+      .eq('user_id', userId);
+    // Refresh members
+    const { data: members } = await supabase
+      .from('room_members')
+      .select('*, profiles(username, avatar_url), characters(*)')
+      .eq('room_id', roomId);
+    set({ members: members || [] });
   },
 
   leaveRoom: async (roomId, userId) => {

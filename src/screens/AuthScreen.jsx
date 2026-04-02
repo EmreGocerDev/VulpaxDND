@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { supabase } from '../lib/supabase';
 
 export default function AuthScreen() {
   const navigate = useNavigate();
@@ -18,9 +19,10 @@ export default function AuthScreen() {
   const [signUpSuccess, setSignUpSuccess] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
+  // Redirect if already logged in AND not resetting password
   useEffect(() => {
-    if (user) navigate('/', { replace: true });
-  }, [user, navigate]);
+    if (user && !isResetPassword) navigate('/', { replace: true });
+  }, [user, navigate, isResetPassword]);
 
   // Deep link'ten gelen şifre sıfırlama hash'ini kontrol et
   useEffect(() => {
@@ -35,6 +37,18 @@ export default function AuthScreen() {
     checkHash();
     window.addEventListener('hashchange', checkHash);
     return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
+
+  // Listen for PASSWORD_RECOVERY event from Supabase auth
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResetPassword(true);
+        setIsForgotPassword(false);
+        setIsLogin(false);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleSubmit = async (e) => {

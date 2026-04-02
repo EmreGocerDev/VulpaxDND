@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { useToastStore } from '../stores/toastStore';
 
 export default function SettingsScreen() {
   const navigate = useNavigate();
   const { profile, user } = useAuthStore();
+  const toast = useToastStore();
   const [settings, setSettings] = useState(() => loadSettings());
 
   function loadSettings() {
@@ -40,18 +42,37 @@ export default function SettingsScreen() {
 
   const handleSave = () => {
     localStorage.setItem('vulpax_settings', JSON.stringify(settings));
+    toast.success('Ayarlar başarıyla kaydedildi!');
   };
 
   const handleReset = () => {
     const defaults = getDefaults();
     setSettings(defaults);
     localStorage.setItem('vulpax_settings', JSON.stringify(defaults));
+    toast.success('Ayarlar varsayılana döndürüldü!');
   };
 
   // Auto-save on change
   useEffect(() => {
     localStorage.setItem('vulpax_settings', JSON.stringify(settings));
   }, [settings]);
+
+  // Sync fullscreen state with actual fullscreen status
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFullscreen = !!document.fullscreenElement;
+      setSettings((s) => {
+        if (s.fullscreen !== isFullscreen) {
+          const updated = { ...s, fullscreen: isFullscreen };
+          localStorage.setItem('vulpax_settings', JSON.stringify(updated));
+          return updated;
+        }
+        return s;
+      });
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   return (
     <div className="screen" style={{ padding: '24px 48px', overflowY: 'auto' }}>
@@ -82,7 +103,11 @@ export default function SettingsScreen() {
           <SettingToggle label="Tam Ekran" value={settings.fullscreen || false} onChange={(v) => {
             updateSetting('fullscreen', v);
             if (window.electronAPI?.fullscreen) {
-              window.electronAPI.fullscreen();
+              // Electron: check actual fullscreen state before toggling
+              const currentlyFullscreen = !!document.fullscreenElement || window.innerHeight === screen.height;
+              if ((v && !currentlyFullscreen) || (!v && currentlyFullscreen)) {
+                window.electronAPI.fullscreen();
+              }
             } else {
               if (v) document.documentElement.requestFullscreen?.();
               else document.exitFullscreen?.();
@@ -149,7 +174,7 @@ export default function SettingsScreen() {
       </div>
 
       {/* Bottom Actions */}
-      <div className="flex gap-md mt-lg" style={{ justifyContent: 'center' }}>
+      <div className="flex gap-md mt-lg" style={{ justifyContent: 'center', paddingTop: 24, paddingBottom: 24 }}>
         <button className="btn btn-primary" onClick={handleSave}>💾 Kaydet</button>
         <button className="btn btn-ghost" onClick={handleReset}>🔄 Varsayılana Dön</button>
       </div>

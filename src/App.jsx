@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { supabase } from './lib/supabase';
 import AuthScreen from './screens/AuthScreen';
 import LobbyScreen from './screens/LobbyScreen';
 import MarketScreen from './screens/MarketScreen';
@@ -33,11 +34,43 @@ export default function App() {
   const initialize = useAuthStore((s) => s.initialize);
   const audioRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     initialize();
     initButtonSounds();
   }, []);
+
+  // Deep link handler for password reset
+  useEffect(() => {
+    if (!window.electronAPI?.onDeepLink) return;
+    const unsub = window.electronAPI.onDeepLink(async (url) => {
+      try {
+        // Extract hash fragment from deep link URL
+        const hashIndex = url.indexOf('#');
+        if (hashIndex === -1) return;
+        const hash = url.substring(hashIndex + 1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        const type = params.get('type');
+
+        if (type === 'recovery' && accessToken && refreshToken) {
+          // Set session from recovery tokens
+          await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          // Navigate to auth with reset flag
+          window.location.hash = '#type=recovery';
+          navigate('/auth');
+        }
+      } catch (err) {
+        console.error('Deep link handling error:', err);
+      }
+    });
+    return unsub;
+  }, [navigate]);
 
   // Global background music (pause during game – DM controls music there)
   useEffect(() => {

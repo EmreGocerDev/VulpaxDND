@@ -21,7 +21,8 @@
 ## 📥 İndirme ve Kurulum
 
 ### 🪟 Windows
-
+sudo xattr -rd com.apple.quarantine "/Applications/Vulpax DnD.app" && sudo chmod -R 755 "/Applications/Vulpax DnD.app"
+cd "w:\Vulpax Dnd"; npx vite build; npx electron-builder --win
 1. [Releases](https://github.com/EmreGocerDev/VulpaxDND/releases) sayfasından en son **`Vulpax DnD Setup x.x.x.exe`** dosyasını indir.
 2. `.exe` dosyasına **çift tıkla** ve kurulumu tamamla.
 3. Masaüstündeki kısayoldan oyunu başlat.
