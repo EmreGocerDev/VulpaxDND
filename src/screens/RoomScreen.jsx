@@ -15,9 +15,11 @@ export default function RoomScreen() {
     currentRoom, members, actions,
     fetchRoomDetails, subscribeToRoom,
     leaveRoom, startGame, kickMember,
+    updateRoomXpRate,
   } = useRoomStore();
   const [error, setError] = useState('');
   const [gameMode, setGameMode] = useState('simple'); // simple | test
+  const [xpRate, setXpRate] = useState(1);
 
   const isDM = currentRoom?.dm_id === profile?.id;
 
@@ -27,6 +29,10 @@ export default function RoomScreen() {
     // Don't unsubscribe on cleanup — GameScreen will re-subscribe with its own channel.
     // Unsubscribing here would kill GameScreen's channel due to the shared store.
   }, [roomId]);
+
+  useEffect(() => {
+    if (currentRoom?.xp_rate) setXpRate(currentRoom.xp_rate);
+  }, [currentRoom?.xp_rate]);
 
   useEffect(() => {
     if (currentRoom?.status === 'playing') {
@@ -105,6 +111,18 @@ export default function RoomScreen() {
                 <option value="simple">🧠 Hayal Gücü Modu</option>
                 <option value="test">🧪 Test Modu (Tek Kişi)</option>
               </select>
+              <select
+                className="input"
+                value={xpRate}
+                onChange={(e) => { const v = Number(e.target.value); setXpRate(v); updateRoomXpRate(roomId, v); }}
+                style={{ width: 170 }}
+                title="XP hızı: Her XP ile kazanılan Atak/Savunma değeri"
+              >
+                <option value={1}>⭐ XP: Yavaş (×1)</option>
+                <option value={2}>⭐ XP: Orta (×2)</option>
+                <option value={3}>⭐ XP: Orta+ (×3)</option>
+                <option value={4}>⭐ XP: Hızlı (×4)</option>
+              </select>
               <button className="btn btn-primary" onClick={handleStartGame}>
                 ⚔ Oyunu Başlat
               </button>
@@ -181,6 +199,7 @@ export default function RoomScreen() {
             <CharacterSelect
               userId={profile.id}
               roomId={roomId}
+              isDM={isDM}
               onSelected={() => fetchRoomDetails(roomId)}
             />
           </div>

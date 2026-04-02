@@ -8,7 +8,7 @@ function getCharImage(char) {
   return null;
 }
 
-export default function CharacterSelect({ userId, roomId, onSelected }) {
+export default function CharacterSelect({ userId, roomId, isDM, onSelected }) {
   const [characters, setCharacters] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,7 +40,9 @@ export default function CharacterSelect({ userId, roomId, onSelected }) {
       .select('*')
       .in('id', charIds);
 
-    setCharacters(chars || []);
+    // Filter: DM only sees dm_only chars, non-DM only sees regular chars
+    const filtered = (chars || []).filter(c => isDM ? !!c.dm_only : !c.dm_only);
+    setCharacters(filtered);
     setLoading(false);
   };
 
@@ -112,7 +114,7 @@ export default function CharacterSelect({ userId, roomId, onSelected }) {
               style={getCharImage(char) ? { backgroundImage: `url(${getCharImage(char)})` } : { background: 'var(--darker-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: 'var(--text-dim)' }}
             >{!getCharImage(char) && '⚔️'}</div>
             <div className="character-select-card__info">
-              <div className="card__title">{char.name}</div>
+              <div className="card__title">{char.dm_only ? '👑 ' : ''}{char.name}</div>
               <div className="card__stats">
                 <span className="card__stat">❤️ {char.health}</span>
                 <span className="card__stat">⚔️ {char.attack}</span>

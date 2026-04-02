@@ -292,4 +292,20 @@ export const useRoomStore = create((set, get) => ({
       .update({ charisma_bonus: bonus })
       .eq('id', memberId);
   },
+
+  // XP güncelle
+  updateMemberXp: async (memberId, xp) => {
+    await supabase
+      .from('room_members')
+      .update({ xp: Math.max(0, xp) })
+      .eq('id', memberId);
+  },
+
+  // Oda XP rate güncelle
+  updateRoomXpRate: async (roomId, xpRate) => {
+    await supabase
+      .from('rooms')
+      .update({ xp_rate: xpRate })
+      .eq('id', roomId);
+  },
 }));

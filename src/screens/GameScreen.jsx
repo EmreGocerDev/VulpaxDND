@@ -309,6 +309,7 @@ export default function GameScreen() {
               <CharacterSelect
                 userId={profile.id}
                 roomId={roomId}
+                isDM={isDM}
                 onSelected={() => {
                   setCharacterSelected(true);
                   fetchRoomDetails(roomId);
@@ -441,7 +442,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const [aliveOverlay, setAliveOverlay] = useState(null); // revival overlay { name }
   const [seenActionIds, setSeenActionIds] = useState(new Set()); // track processed actions
   const seenSfxIds = useRef(new Set()); // track SFX-processed actions (ref to avoid re-render loops)
-  const { updateMemberHealth, updateMemberStatus, updateMemberAttackBonus, updateMemberDefenseBonus, updateMemberPoison, updateMemberStun, updateMemberAgilityBonus, updateMemberIntelligenceBonus, updateMemberCharismaBonus } = useRoomStore();
+  const { updateMemberHealth, updateMemberStatus, updateMemberAttackBonus, updateMemberDefenseBonus, updateMemberPoison, updateMemberStun, updateMemberAgilityBonus, updateMemberIntelligenceBonus, updateMemberCharismaBonus, updateMemberXp } = useRoomStore();
 
   // Card system v2 states
   const [cardConfirm, setCardConfirm] = useState(null); // {power, step:'confirm'|'target'}
@@ -453,6 +454,10 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const [turnOverlay, setTurnOverlay] = useState(null); // { name, title, charImage, charName, charRarity, avatarUrl }
   const [titleMap, setTitleMap] = useState({}); // userId → title name
   const [avatarMap, setAvatarMap] = useState({}); // userId → avatar_url
+
+  // XP Distribution UI
+  const [showXpPanel, setShowXpPanel] = useState(false);
+  const [xpTargetPlayer, setXpTargetPlayer] = useState(''); // specific player for XP
 
   const cardHandRef = useRef(null);
   const musicRef = useRef(null);
@@ -527,6 +532,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const targetMember = members.find((m) => m.id === selectedTarget);
   const isMyTurn = currentTurnId === profile.id;
+  const xpRate = currentRoom?.xp_rate || 1;
 
   // Fetch titles for all members (for display)
   useEffect(() => {
@@ -630,7 +636,10 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
       const cardOwnerId = originalAction?.user_id;
       if (cardOwnerId === profile?.id) {
         if (approvalAction.action_value.approved) {
-          setUsedCards((prev) => [...prev, approvalAction.action_value.cardId]);
+          const approvedCardId = approvalAction.action_value.cardId;
+          if (approvedCardId !== '__basic_attack__' && approvedCardId !== '__rest__') {
+            setUsedCards((prev) => [...prev, approvedCardId]);
+          }
           setFlippingCard(null);
         }
         setPendingCard(null);
@@ -894,6 +903,23 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     await sendAction('🃏 Kartlar yeniden dağıtıldı! Tüm kartlar kullanılabilir.', { resetCards: true });
   };
 
+  // XP: Give 1 XP to all non-DM players
+  const handleGiveXpAll = async () => {
+    const nonDm = members.filter(m => m.user_id !== currentRoom.dm_id);
+    for (const m of nonDm) {
+      await updateMemberXp(m.id, (m.xp || 0) + 1);
+    }
+    await sendAction(`⭐ Tüm oyunculara 1 XP verildi! (Atak/Savunma +${xpRate})`);
+  };
+
+  // XP: Give 1 XP to a specific player
+  const handleGiveXpPlayer = async (memberId) => {
+    const m = members.find(mm => mm.id === memberId);
+    if (!m) return;
+    await updateMemberXp(m.id, (m.xp || 0) + 1);
+    await sendAction(`⭐ ${m.profiles?.username} → 1 XP kazandı! (Toplam: ${(m.xp || 0) + 1} XP)`);
+  };
+
   const sendAction = async (message, extra = {}) => {
     await supabase.from('room_actions').insert({
       room_id: roomId,
@@ -981,6 +1007,11 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     await updateMemberHealth(targetMember.id, 0);
     await updateMemberStatus(targetMember.id, 'dead');
     await sendAction(`💀 ${targetMember.profiles?.username} öldü!`);
+    // XP: Ölen -2
+    if (targetMember.user_id !== currentRoom.dm_id) {
+      await updateMemberXp(targetMember.id, Math.max(0, (targetMember.xp || 0) - 2));
+      await sendAction(`⭐ ${targetMember.profiles?.username} öldüğü için 2 XP kaybetti!`);
+    }
   };
 
   const handleRevive = async () => {
@@ -1025,8 +1056,38 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     setCardTarget('');
   };
 
-  // Player confirms they want to use the card → show target selection
-  const handleCardConfirmYes = () => {
+  // Player confirms they want to use the card → show target selection (rest auto-targets self)
+  const handleCardConfirmYes = async () => {
+    if (cardConfirm?.power?.effect_type === 'dinlenme') {
+      const me = members.find(m => m.user_id === profile.id);
+      if (!me) return;
+      const power = cardConfirm.power;
+      setFlippingCard(power.id);
+      setCardConfirm(null);
+      setCardUsedThisTurn(true);
+      if (isDM) {
+        await applyCardEffect(power, me, profile);
+        setFlippingCard(null);
+      } else {
+        await supabase.from('room_actions').insert({
+          room_id: roomId,
+          user_id: profile.id,
+          action_type: 'card_use',
+          action_value: {
+            card_name: power.name,
+            cardId: power.id,
+            effect_type: power.effect_type,
+            effect_value: power.effect_value,
+            pending: true,
+            requester: profile.username || profile.id,
+            targetMemberId: me.id,
+            targetName: me.profiles?.username || 'Oyuncu',
+          },
+        });
+        setPendingCard(power);
+      }
+      return;
+    }
     setCardConfirm(prev => prev ? { ...prev, step: 'target' } : null);
   };
 
@@ -1050,7 +1111,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     if (isDM) {
       // DM uses card directly — no approval needed
       await applyCardEffect(power, targetMem, profile);
-      setUsedCards((prev) => [...prev, power.id]);
+      if (!power.isSpecial) setUsedCards((prev) => [...prev, power.id]);
       setFlippingCard(null);
       // Turn stays with DM
     } else {
@@ -1092,10 +1153,12 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
       case 'saldiri': {
         const atkBase = targetMem.user_id === caster.id ? (casterMem?.characters?.attack || 10) : (casterMem?.characters?.attack || 10);
         const atkBonus = casterMem?.attack_bonus || 0;
-        const totalAtk = atkBase + atkBonus;
+        const atkXp = (casterMem?.xp || 0) * xpRate;
+        const totalAtk = atkBase + atkBonus + atkXp;
         const defBase = targetMem.characters?.defense || 0;
         const defBonus = targetMem.defense_bonus || 0;
-        const totalDef = defBase + defBonus;
+        const defXp = (targetMem.xp || 0) * xpRate;
+        const totalDef = defBase + defBonus + defXp;
         const dmg = Math.max(0, totalAtk + effectVal - totalDef);
         const newHp = Math.max(0, targetMem.current_health - dmg);
         await updateMemberHealth(targetMem.id, newHp);
@@ -1103,6 +1166,14 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         if (newHp <= 0) {
           await updateMemberStatus(targetMem.id, 'dead');
           await sendAction(`💀 ${tName} öldü!`);
+          // XP: Ölen kişi -2 XP
+          await updateMemberXp(targetMem.id, Math.max(0, (targetMem.xp || 0) - 2));
+          await sendAction(`⭐ ${tName} öldüğü için 2 XP kaybetti!`);
+          // XP: Öldüren kişi -1 XP
+          if (casterMem && casterMem.user_id !== currentRoom.dm_id) {
+            await updateMemberXp(casterMem.id, Math.max(0, (casterMem.xp || 0) - 1));
+            await sendAction(`⭐ ${casterMem.profiles?.username} birini öldürdüğü için 1 XP kaybetti!`);
+          }
         }
         break;
       }
@@ -1127,6 +1198,11 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         await updateMemberHealth(targetMem.id, reviveHp);
         await updateMemberStatus(targetMem.id, 'alive');
         await sendAction(`✨ ${power.name} → ${tName} diriltildi! (${reviveHp} HP ile hayata döndü)`);
+        // XP: Diriltme kullanan kişi +1 XP
+        if (casterMem && casterMem.user_id !== currentRoom.dm_id) {
+          await updateMemberXp(casterMem.id, (casterMem.xp || 0) + 1);
+          await sendAction(`⭐ ${casterMem.profiles?.username} diriltme yaptığı için 1 XP kazandı!`);
+        }
         break;
       }
       case 'can': {
@@ -1158,6 +1234,40 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         const newAtkBonus = (targetMem.attack_bonus || 0) - effectVal;
         await updateMemberAttackBonus(targetMem.id, newAtkBonus);
         await sendAction(`🔻 ${power.name} → ${tName} saldırısı kalıcı -${effectVal} azaldı! (${(targetMem.characters?.attack || 0)}${newAtkBonus >= 0 ? '+' : ''}${newAtkBonus})`);
+        break;
+      }
+      case 'temel_saldiri': {
+        const atkBase = casterMem?.characters?.attack || 10;
+        const atkBonus = casterMem?.attack_bonus || 0;
+        const atkXp = (casterMem?.xp || 0) * xpRate;
+        const totalAtk = atkBase + atkBonus + atkXp;
+        const defBase = targetMem.characters?.defense || 0;
+        const defBonus = targetMem.defense_bonus || 0;
+        const defXp = (targetMem.xp || 0) * xpRate;
+        const totalDef = defBase + defBonus + defXp;
+        const dmg = Math.max(0, totalAtk - totalDef);
+        const newHp = Math.max(0, targetMem.current_health - dmg);
+        await updateMemberHealth(targetMem.id, newHp);
+        await sendAction(`⚔ Normal Saldırı → ${tName}: ${totalAtk}-${totalDef}=${dmg} hasar! (${newHp} HP kaldı)`);
+        if (newHp <= 0) {
+          await updateMemberStatus(targetMem.id, 'dead');
+          await sendAction(`💀 ${tName} öldü!`);
+          // XP: Ölen kişi -2 XP
+          await updateMemberXp(targetMem.id, Math.max(0, (targetMem.xp || 0) - 2));
+          await sendAction(`⭐ ${tName} öldüğü için 2 XP kaybetti!`);
+          // XP: Öldüren kişi -1 XP
+          if (casterMem && casterMem.user_id !== currentRoom.dm_id) {
+            await updateMemberXp(casterMem.id, Math.max(0, (casterMem.xp || 0) - 1));
+            await sendAction(`⭐ ${casterMem.profiles?.username} birini öldürdüğü için 1 XP kaybetti!`);
+          }
+        }
+        break;
+      }
+      case 'dinlenme': {
+        const maxHp = targetMem.characters?.health || 100;
+        const healHp = Math.min(maxHp, targetMem.current_health + 5);
+        await updateMemberHealth(targetMem.id, healHp);
+        await sendAction(`💤 ${tName} dinlendi ve 5 can kazandı! (${healHp} HP)`);
         break;
       }
       default:
@@ -1268,6 +1378,11 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="text-dim" style={{ fontSize: 11, marginBottom: 6 }}>
                   {member.characters?.name || 'Serbest Karakter'}
                 </div>
+                {member.user_id !== currentRoom.dm_id && (
+                  <div style={{ fontSize: 11, color: '#FFD700', fontFamily: 'var(--font-heading)', marginBottom: 4 }}>
+                    ⭐ {member.xp || 0} XP <span style={{ color: 'var(--text-dim)', fontSize: 9 }}>(+{(member.xp || 0) * xpRate} Atk/Def)</span>
+                  </div>
+                )}
                 <div className="health-bar">
                   <div className={`health-bar__fill health-bar__fill--${hpClass}`} style={{ width: `${hpPercent}%` }} />
                 </div>
@@ -1342,11 +1457,42 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         </div>
 
         {/* Power Cards – always visible, disabled when not your turn */}
-        {allPowers.length > 0 && (() => {
+        {(() => {
           const me = members.find(m => m.user_id === profile.id);
+          const myChar = me?.characters || null;
           const isStunned = me?.stun_turns > 0;
+          const isDead = me?.status === 'dead';
           const notMyTurn = !isMyTurn && !isDM;
-          const cardsDisabled = cardUsedThisTurn || isStunned || !!pendingCard || notMyTurn;
+          const cardsDisabled = cardUsedThisTurn || isStunned || isDead || !!pendingCard || notMyTurn;
+
+          // Build special cards from character (for everyone who has a character)
+          const specialCards = [];
+          if (myChar) {
+            const myXpBonus = (me?.xp || 0) * xpRate;
+            specialCards.push({
+              id: '__basic_attack__',
+              name: 'Normal Saldırı',
+              effect_type: 'temel_saldiri',
+              effect_value: 0,
+              rarity: myChar.rarity || 'common',
+              image_placeholder: myChar.image_placeholder,
+              description: `Temel saldırı hasarı: ${(myChar.attack || 10) + (me?.attack_bonus || 0) + myXpBonus}`,
+              isSpecial: true,
+            });
+            specialCards.push({
+              id: '__rest__',
+              name: 'Dinlen',
+              effect_type: 'dinlenme',
+              effect_value: 5,
+              rarity: 'common',
+              image_placeholder: myChar.image_placeholder,
+              description: 'Dinlenerek 5 can kazan.',
+              isSpecial: true,
+            });
+          }
+
+          const allCards = [...allPowers, ...specialCards];
+          if (allCards.length === 0) return null;
           return (
           <div className="parchment-panel" style={{ padding: '16px 8px', overflow: 'visible', flexShrink: 0, opacity: notMyTurn ? 0.4 : cardsDisabled ? 0.5 : 1, position: 'relative' }}>
             <div className="flex items-center justify-between" style={{ marginBottom: 10, padding: '0 8px' }}>
@@ -1372,10 +1518,12 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
             <div className="card-carousel-wrapper">
               <button className="card-carousel-arrow card-carousel-arrow--left" onClick={() => { if (cardHandRef.current) cardHandRef.current.scrollBy({ left: -240, behavior: 'smooth' }); }}>‹</button>
               <div className="simple-card-hand" ref={cardHandRef}>
-              {allPowers.map((power) => {
-                const isUsed = usedCards.includes(power.id);
+              {allCards.map((power) => {
+                const isSpecial = !!power.isSpecial;
+                const isUsed = !isSpecial && usedCards.includes(power.id);
                 const isFlipping = flippingCard === power.id;
                 const isPending = pendingCard?.id === power.id;
+                const specialIcon = power.effect_type === 'temel_saldiri' ? '⚔' : power.effect_type === 'dinlenme' ? '💤' : null;
                 return (
                   <div
                     key={power.id}
@@ -1385,13 +1533,14 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                   >
                     <div className="simple-power-card__inner">
                       <div className="simple-power-card__front" style={getCardImage(power) ? { backgroundImage: `url(${getCardImage(power)})` } : { background: 'var(--darker-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {!getCardImage(power) && <div style={{ fontSize: 32, color: 'var(--text-dim)', position: 'absolute', top: '30%' }}>✨</div>}
+                        {!getCardImage(power) && <div style={{ fontSize: 32, color: 'var(--text-dim)', position: 'absolute', top: '30%' }}>{specialIcon || '✨'}</div>}
+                        {isSpecial && <div style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', background: power.effect_type === 'temel_saldiri' ? 'rgba(165,42,42,0.85)' : 'rgba(45,107,63,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, zIndex: 2, border: '1px solid rgba(255,255,255,0.2)' }}>{specialIcon}</div>}
                         <div className="simple-power-card__name-label">{power.name}</div>
                         {isUsed && <div className="simple-power-card__used-overlay">Kullanıldı</div>}
                         {isPending && <div className="simple-power-card__used-overlay">Onay Bekleniyor...</div>}
                       </div>
                       <div className="simple-power-card__back">
-                        <div style={{ fontSize: 32 }}>🃏</div>
+                        <div style={{ fontSize: 32 }}>{specialIcon || '🃏'}</div>
                         <div style={{ fontSize: 10, marginTop: 4 }}>Vulpax DnD</div>
                       </div>
                     </div>
@@ -1415,21 +1564,26 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
             )}
             {notMyTurn && (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0', gap: 8, flexWrap: 'wrap' }}>
-                {allPowers.slice(0, 5).map(power => (
-                  <div key={power.id} style={{ width: 60, height: 80, borderRadius: 6, border: '1px solid var(--border-dark)', overflow: 'hidden', opacity: usedCards.includes(power.id) ? 0.3 : 0.7, position: 'relative' }}>
-                    <div style={getCardImage(power) ? { width: '100%', height: '100%', backgroundImage: `url(${getCardImage(power)})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { width: '100%', height: '100%', background: 'var(--darker-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'var(--text-dim)' }}>{!getCardImage(power) && '✨'}</div>
-                    {usedCards.includes(power.id) && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'var(--text-dim)' }}>Kullanıldı</div>}
+                {allCards.slice(0, 7).map(power => {
+                  const isSpecial = !!power.isSpecial;
+                  const specialIcon = power.effect_type === 'temel_saldiri' ? '⚔' : power.effect_type === 'dinlenme' ? '💤' : null;
+                  return (
+                  <div key={power.id} style={{ width: 60, height: 80, borderRadius: 6, border: isSpecial ? (power.effect_type === 'temel_saldiri' ? '1px solid var(--blood-red-light)' : '1px solid var(--success)') : '1px solid var(--border-dark)', overflow: 'hidden', opacity: (!isSpecial && usedCards.includes(power.id)) ? 0.3 : 0.7, position: 'relative' }}>
+                    <div style={getCardImage(power) ? { width: '100%', height: '100%', backgroundImage: `url(${getCardImage(power)})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { width: '100%', height: '100%', background: 'var(--darker-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'var(--text-dim)' }}>{!getCardImage(power) && (specialIcon || '✨')}</div>
+                    {!isSpecial && usedCards.includes(power.id) && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'var(--text-dim)' }}>Kullanıldı</div>}
+                    {isSpecial && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', fontSize: 7, textAlign: 'center', padding: '2px 0', color: 'var(--gold)' }}>{power.name}</div>}
                   </div>
-                ))}
-                {allPowers.length > 5 && <div style={{ width: 60, height: 80, borderRadius: 6, border: '1px solid var(--border-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text-dim)', background: 'var(--darker-bg)' }}>+{allPowers.length - 5}</div>}
+                  );
+                })}
+                {allCards.length > 7 && <div style={{ width: 60, height: 80, borderRadius: 6, border: '1px solid var(--border-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text-dim)', background: 'var(--darker-bg)' }}>+{allCards.length - 7}</div>}
               </div>
             )}
           </div>
           );
         })()}
 
-        {/* Standalone Skip Turn button — always visible when it's your turn and no cards */}
-        {isMyTurn && !isDM && allPowers.length === 0 && (
+        {/* Standalone Skip Turn button — always visible when it's your turn and no cards at all */}
+        {isMyTurn && !isDM && allPowers.length === 0 && !members.find(m => m.user_id === profile.id)?.characters && (
           <div className="parchment-panel" style={{ padding: 12, flexShrink: 0, textAlign: 'center' }}>
             <button className="btn btn-gold btn-sm" onClick={handleSkipTurn}>
               ⏭ Sıramı Geç
@@ -1494,6 +1648,13 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                     )}
                     <span className={`badge badge--${vp.status}`} style={{ fontSize: 11, margin: '4px auto', display: 'inline-block' }}>{vp.status}</span>
 
+                    {/* XP Display */}
+                    {vp.user_id !== currentRoom.dm_id && (
+                      <div style={{ textAlign: 'center', margin: '8px 0 0', color: '#FFD700', fontFamily: 'var(--font-heading)', fontSize: 14 }}>
+                        ⭐ {vp.xp || 0} XP <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>(+{(vp.xp || 0) * xpRate} Atk/Def)</span>
+                      </div>
+                    )}
+
                     {/* HP Bar */}
                     <div style={{ margin: '12px 0 4px' }}>
                       <div className="health-bar" style={{ height: 14, borderRadius: 7 }}>
@@ -1512,8 +1673,9 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                         <div className="char-profile-view__stat-val">
                           {(vp.characters?.attack || 0)}
                           {(vp.attack_bonus || 0) !== 0 && <span style={{ color: (vp.attack_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.attack_bonus || 0) > 0 ? '+' : ''}{vp.attack_bonus || 0}</span>}
+                          {vp.user_id !== currentRoom.dm_id && (vp.xp || 0) > 0 && <span style={{ color: '#FFD700', fontSize: 11 }}> +{(vp.xp || 0) * xpRate}xp</span>}
                         </div>
-                        <div className="char-profile-view__stat-total">= {(vp.characters?.attack || 0) + (vp.attack_bonus || 0)}</div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.attack || 0) + (vp.attack_bonus || 0) + (vp.user_id !== currentRoom.dm_id ? (vp.xp || 0) * xpRate : 0)}</div>
                       </div>
                       <div className="char-profile-view__stat">
                         <div className="char-profile-view__stat-icon">🛡️</div>
@@ -1521,8 +1683,9 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                         <div className="char-profile-view__stat-val">
                           {(vp.characters?.defense || 0)}
                           {(vp.defense_bonus || 0) !== 0 && <span style={{ color: (vp.defense_bonus || 0) > 0 ? '#4CAF50' : '#f44336', fontSize: 11 }}> {(vp.defense_bonus || 0) > 0 ? '+' : ''}{vp.defense_bonus || 0}</span>}
+                          {vp.user_id !== currentRoom.dm_id && (vp.xp || 0) > 0 && <span style={{ color: '#FFD700', fontSize: 11 }}> +{(vp.xp || 0) * xpRate}xp</span>}
                         </div>
-                        <div className="char-profile-view__stat-total">= {(vp.characters?.defense || 0) + (vp.defense_bonus || 0)}</div>
+                        <div className="char-profile-view__stat-total">= {(vp.characters?.defense || 0) + (vp.defense_bonus || 0) + (vp.user_id !== currentRoom.dm_id ? (vp.xp || 0) * xpRate : 0)}</div>
                       </div>
                       <div className="char-profile-view__stat">
                         <div className="char-profile-view__stat-icon">🏃</div>
@@ -1666,7 +1829,8 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                     >
                       <span>{m.profiles?.username}</span>
                       <span style={{ color: 'var(--text-dim)', fontSize: 11, marginLeft: 8 }}>
-                        ❤️{m.current_health} ⚔{(m.characters?.attack || 0) + (m.attack_bonus || 0)} 🛡{(m.characters?.defense || 0) + (m.defense_bonus || 0)}
+                        ❤️{m.current_health} ⚔{(m.characters?.attack || 0) + (m.attack_bonus || 0) + (m.user_id !== currentRoom.dm_id ? (m.xp || 0) * xpRate : 0)} 🛡{(m.characters?.defense || 0) + (m.defense_bonus || 0) + (m.user_id !== currentRoom.dm_id ? (m.xp || 0) * xpRate : 0)}
+                        {m.user_id !== currentRoom.dm_id && (m.xp || 0) > 0 ? ` ⭐${m.xp}` : ''}
                       </span>
                       {m.status !== 'alive' && <span className={`badge badge--${m.status}`} style={{ fontSize: 9, marginLeft: 6 }}>{m.status}</span>}
                     </button>
@@ -1728,14 +1892,6 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
             title="Müzik Seç"
           >
             🎵
-          </button>
-          {/* DM Card Reset FAB */}
-          <button
-            className="dm-fab dm-fab--cards"
-            onClick={handleResetCards}
-            title="Kartları Yeniden Dağıt"
-          >
-            🃏
           </button>
           {/* DM Story Cards FAB */}
           <button
@@ -1902,7 +2058,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
               <div className="dm-cockpit__stat">
                 <div className="dm-cockpit__stat-label">⚔️ SALDIRI BONUS</div>
                 <div className="dm-cockpit__stat-value">
-                  {(vc.characters?.attack || 0)} <span style={{ color: (vc.attack_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.attack_bonus || 0) >= 0 ? '+' : ''}{vc.attack_bonus || 0}</span> = {(vc.characters?.attack || 0) + (vc.attack_bonus || 0)}
+                  {(vc.characters?.attack || 0)} <span style={{ color: (vc.attack_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.attack_bonus || 0) >= 0 ? '+' : ''}{vc.attack_bonus || 0}</span>{vc.user_id !== currentRoom.dm_id && (vc.xp || 0) > 0 && <span style={{ color: '#FFD700' }}> +{(vc.xp || 0) * xpRate}xp</span>} = {(vc.characters?.attack || 0) + (vc.attack_bonus || 0) + (vc.user_id !== currentRoom.dm_id ? (vc.xp || 0) * xpRate : 0)}
                 </div>
                 <div className="dm-cockpit__stat-controls">
                   <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.attack_bonus || 0) - 5; await updateMemberAttackBonus(vc.id, v); await sendAction(`⚔️ ${vc.profiles?.username} saldırı bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
@@ -1918,7 +2074,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
               <div className="dm-cockpit__stat">
                 <div className="dm-cockpit__stat-label">🛡️ SAVUNMA BONUS</div>
                 <div className="dm-cockpit__stat-value">
-                  {(vc.characters?.defense || 0)} <span style={{ color: (vc.defense_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.defense_bonus || 0) >= 0 ? '+' : ''}{vc.defense_bonus || 0}</span> = {(vc.characters?.defense || 0) + (vc.defense_bonus || 0)}
+                  {(vc.characters?.defense || 0)} <span style={{ color: (vc.defense_bonus || 0) >= 0 ? '#4CAF50' : '#f44336' }}>{(vc.defense_bonus || 0) >= 0 ? '+' : ''}{vc.defense_bonus || 0}</span>{vc.user_id !== currentRoom.dm_id && (vc.xp || 0) > 0 && <span style={{ color: '#FFD700' }}> +{(vc.xp || 0) * xpRate}xp</span>} = {(vc.characters?.defense || 0) + (vc.defense_bonus || 0) + (vc.user_id !== currentRoom.dm_id ? (vc.xp || 0) * xpRate : 0)}
                 </div>
                 <div className="dm-cockpit__stat-controls">
                   <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = (vc.defense_bonus || 0) - 5; await updateMemberDefenseBonus(vc.id, v); await sendAction(`🛡️ ${vc.profiles?.username} savunma bonusu: ${v >= 0 ? '+' : ''}${v}`); }}>-5</button>
@@ -1984,7 +2140,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="dm-cockpit__stat-value"><span className={`badge badge--${vc.status}`}>{vc.status}</span></div>
                 <div className="dm-cockpit__stat-controls">
                   <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberStatus(vc.id, 'alive'); playSfx('alive'); await sendAction(`✅ ${vc.profiles?.username} artık canlı!`); }}>Canlı</button>
-                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { await updateMemberHealth(vc.id, 0); await updateMemberStatus(vc.id, 'dead'); playSfx('die'); await sendAction(`💀 ${vc.profiles?.username} öldü!`); }}>Öldür</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { await updateMemberHealth(vc.id, 0); await updateMemberStatus(vc.id, 'dead'); playSfx('die'); await sendAction(`💀 ${vc.profiles?.username} öldü!`); if (vc.user_id !== currentRoom.dm_id) { await updateMemberXp(vc.id, Math.max(0, (vc.xp || 0) - 2)); await sendAction(`⭐ ${vc.profiles?.username} öldüğü için 2 XP kaybetti!`); } }}>Öldür</button>
                   <button className="dm-cockpit__btn" onClick={async () => { const maxHp = vc.characters?.health || 100; const v = Math.floor(maxHp / 2); await updateMemberHealth(vc.id, v); await updateMemberStatus(vc.id, 'alive'); playSfx('alive'); await sendAction(`✨ ${vc.profiles?.username} hayata döndü! (${v} HP)`); }}>Dirilt</button>
                   <button className="dm-cockpit__btn" style={{ background: '#9C27B0' }} onClick={async () => { await updateMemberStatus(vc.id, 'buffed'); await sendAction(`⬆️ ${vc.profiles?.username} buff aldı!`); }}>Buff</button>
                 </div>
@@ -2012,6 +2168,29 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                   <button className="dm-cockpit__btn" onClick={async () => { await updateMemberStun(vc.id, 3); await updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (3 tur)`); }}>3 Tur</button>
                   <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { updateMemberStun(vc.id, val); updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); sendAction(`💫 ${vc.profiles?.username} sersemledi! (${val} tur)`); e.target.value = ''; } }}} />
                   <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberStun(vc.id, 0); if (vc.poison_turns <= 0) await updateMemberStatus(vc.id, 'alive'); await sendAction(`💫 ${vc.profiles?.username} sersemletme temizlendi!`); }}>Temizle</button>
+                </div>
+              </div>
+
+              {/* XP — per character */}
+              {vc.user_id !== currentRoom.dm_id && (
+              <div className="dm-cockpit__stat">
+                <div className="dm-cockpit__stat-label">⭐ XP</div>
+                <div className="dm-cockpit__stat-value">{vc.xp || 0} XP <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>(+{(vc.xp || 0) * xpRate} Atk/Def)</span></div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = Math.max(0, (vc.xp || 0) - 1); await updateMemberXp(vc.id, v); await sendAction(`⭐ ${vc.profiles?.username} XP: ${v} (-1)`); }}>-1</button>
+                  <input type="number" className="dm-cockpit__input" placeholder="XP" min="0" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val >= 0) { updateMemberXp(vc.id, val); sendAction(`⭐ ${vc.profiles?.username} XP → ${val} olarak ayarlandı`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = (vc.xp || 0) + 1; await updateMemberXp(vc.id, v); await sendAction(`⭐ ${vc.profiles?.username} → 1 XP kazandı! (Toplam: ${v})`); }}>+1</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberXp(vc.id, 0); await sendAction(`⭐ ${vc.profiles?.username} XP sıfırlandı`); }}>Sıfırla</button>
+                </div>
+              </div>
+              )}
+
+              {/* Card Reset + XP Distribution */}
+              <div className="dm-cockpit__stat" style={{ borderTop: '1px solid var(--border-dark)', paddingTop: 8 }}>
+                <div className="dm-cockpit__stat-label">🎮 GENEL KONTROL</div>
+                <div className="dm-cockpit__stat-controls">
+                  <button className="dm-cockpit__btn" style={{ background: '#5C6BC0' }} onClick={handleResetCards}>🃏 Kartları Dağıt</button>
+                  <button className="dm-cockpit__btn" style={{ background: '#F9A825', color: '#000' }} onClick={handleGiveXpAll}>⭐ Herkese 1 XP</button>
                 </div>
               </div>
             </div>
@@ -2150,6 +2329,8 @@ function getEffectIcon(type) {
     case 'atak': return '⚔';
     case 'savunmakirici': return '🔻';
     case 'atakkirici': return '🔻';
+    case 'temel_saldiri': return '⚔';
+    case 'dinlenme': return '💤';
     // legacy
     case 'damage': return '🔥';
     case 'heal': return '💚';
@@ -2171,6 +2352,8 @@ function getEffectLabel(type) {
     case 'atak': return 'Atak+';
     case 'savunmakirici': return 'Savunma Kırıcı';
     case 'atakkirici': return 'Atak Kırıcı';
+    case 'temel_saldiri': return 'Normal Saldırı';
+    case 'dinlenme': return 'Dinlen (+5 HP)';
     // legacy
     case 'damage': return 'Hasar';
     case 'heal': return 'İyileştirme';

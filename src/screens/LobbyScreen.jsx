@@ -5,6 +5,7 @@ import { useRoomStore } from '../stores/roomStore';
 import FriendsSidebar from '../components/FriendsSidebar';
 import PatchNotesModal from '../components/PatchNotesModal';
 import UpdateChecker from '../components/UpdateChecker';
+import GuideBook from '../components/GuideBook';
 
 export default function LobbyScreen() {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ export default function LobbyScreen() {
   const [showJoinCode, setShowJoinCode] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [showPatchNotes, setShowPatchNotes] = useState(false);
+  const [showGuideBook, setShowGuideBook] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [roomPassword, setRoomPassword] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -322,6 +324,18 @@ export default function LobbyScreen() {
 
       {/* Patch Notes Modal */}
       {showPatchNotes && <PatchNotesModal onClose={() => setShowPatchNotes(false)} />}
+
+      {/* Floating Guide Book Button */}
+      <button 
+        className="floating-guidebook-btn" 
+        onClick={() => setShowGuideBook(true)}
+        title="Rehber"
+      >
+        <img src="./assest/book/book.png" alt="Rehber" />
+      </button>
+
+      {/* Guide Book */}
+      {showGuideBook && <GuideBook onClose={() => setShowGuideBook(false)} />}
 
       {/* Update Checker */}
       <UpdateChecker />

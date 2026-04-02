@@ -221,9 +221,11 @@ export default function MarketScreen() {
         <div className="grid-4">
           {characters.map((char) => (
             <div key={char.id} className={`card card--${char.rarity}`}>
-              <div className="card__image" style={getItemImage(char) ? { backgroundImage: `url(${getItemImage(char)})` } : {}} />
+              <div className="card__image" style={getItemImage(char) ? { backgroundImage: `url(${getItemImage(char)})`, position: 'relative' } : { position: 'relative' }}>
+                {char.dm_only ? <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(244,67,54,0.9)', color: '#fff', fontSize: 10, padding: '2px 8px', borderRadius: 6, fontWeight: 700, letterSpacing: 0.5 }}>👑 DM ONLY</div> : null}
+              </div>
               <div className="card__body">
-                <div className="card__title">{char.name}</div>
+                <div className="card__title">{char.dm_only ? '👑 ' : ''}{char.name}</div>
                 <div className="card__rarity" style={{ color: getRarityColor(char.rarity) }}>
                   {RARITY_ICONS[char.rarity]} {char.rarity}
                 </div>

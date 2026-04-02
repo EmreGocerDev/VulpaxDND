@@ -69,7 +69,7 @@ export default function AdminScreen() {
   const emptyChar = {
     name: '', health: 100, attack: 10, defense: 10, agility: 10, intelligence: 10, charisma: 10,
     rarity: 'common', gold_cost: 50, description: '', image_placeholder: '/assets/characters/default.png',
-    region: '',
+    region: '', dm_only: 0,
   };
 
   const handleSaveChar = async () => {
@@ -389,6 +389,13 @@ export default function AdminScreen() {
                     <span className="text-dim text-sm">Bölge</span>
                     <input className="input input--sm" placeholder="Kuzey Diyarları" value={editingChar.region || ''} onChange={(e) => setEditingChar({ ...editingChar, region: e.target.value })} />
                   </label>
+                  <label className="flex flex-col gap-xs">
+                    <span className="text-dim text-sm">DM Only (Boss)</span>
+                    <select className="input input--sm" value={editingChar.dm_only || 0} onChange={(e) => setEditingChar({ ...editingChar, dm_only: Number(e.target.value) })}>
+                      <option value={0}>Hayır - Herkes Seçebilir</option>
+                      <option value={1}>Evet - Sadece DM</option>
+                    </select>
+                  </label>
                 </div>
                 <div className="flex gap-sm" style={{ marginTop: 12 }}>
                   <button className="btn btn-gold btn-sm" onClick={handleSaveChar}>💾 Kaydet</button>
@@ -404,7 +411,7 @@ export default function AdminScreen() {
                   <tr style={{ borderBottom: '1px solid var(--border-dark)', color: 'var(--text-dim)' }}>
                     <th style={{ textAlign: 'left', padding: '8px 6px' }}>İsim</th>
                     <th>❤️</th><th>⚔</th><th>🛡</th><th>🏃</th><th>🧠</th><th>👑</th>
-                    <th>Nadirlik</th><th>💰</th><th></th>
+                    <th>Nadirlik</th><th>💰</th><th>DM</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -419,6 +426,7 @@ export default function AdminScreen() {
                       <td style={{ textAlign: 'center' }}>{c.charisma ?? '-'}</td>
                       <td style={{ textAlign: 'center', color: rarityColor(c.rarity), fontWeight: 700 }}>{c.rarity}</td>
                       <td style={{ textAlign: 'center' }}>{c.gold_cost}</td>
+                      <td style={{ textAlign: 'center', color: c.dm_only ? '#f44336' : 'var(--text-dim)' }}>{c.dm_only ? '👑' : '—'}</td>
                       <td style={{ textAlign: 'right' }}>
                         <div className="flex gap-xs" style={{ justifyContent: 'flex-end' }}>
                           <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setEditingChar({ ...c })}>✏</button>
