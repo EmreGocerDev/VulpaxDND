@@ -4,13 +4,13 @@
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 280px; /* FriendsSidebar genişliği kadar sağdan boşluk */
-  height: clamp(120px, 15vh, 240px); /* Ekran boyutuna göre ayarlanır */
+  right: 280px;
+  height: clamp(120px, 15vh, 240px);
   overflow: hidden;
   z-index: 10;
   pointer-events: none;
   display: flex;
-  justify-content: center; /* Ortala */
+  justify-content: center;
   align-items: center;
 }
 
@@ -25,13 +25,21 @@
 
 .coat-of-arms-item {
   flex-shrink: 0;
-  width: clamp(60px, 10vw, 160px); /* Ekran boyutuna göre 80px-160px arası */
-  height: clamp(60px, 10vw, 160px); /* Ekran boyutuna göre 80px-160px arası */
+  position: relative;
+  width: clamp(60px, 10vw, 160px);
+  height: clamp(60px, 10vw, 160px);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  opacity: 0.3; /* %30 opaklık */
-  transition: opacity 0.3s ease;
+  opacity: 0.12;
+  pointer-events: auto;
+  cursor: default;
+  transition: opacity 0.35s ease;
+}
+
+.coat-of-arms-item:hover {
+  opacity: 0.92;
 }
 
 .coat-of-arms-item img {
@@ -39,6 +47,33 @@
   height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+  transition: filter 0.35s ease;
+}
+
+.coat-of-arms-item:hover img {
+  filter: drop-shadow(0 0 10px rgba(184, 148, 86, 0.6)) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
+}
+
+.coat-of-arms-label {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Cinzel', serif;
+  font-size: clamp(7px, 0.8vw, 11px);
+  font-weight: 600;
+  color: #d4a84b;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 3px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.coat-of-arms-item:hover .coat-of-arms-label {
+  opacity: 1;
 }
 
 /* Animasyon - Kaldırıldı */

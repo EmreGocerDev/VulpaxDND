@@ -2,32 +2,30 @@ import React from 'react';
 import '../styles/coatOfArmsSlider.css';
 
 export default function CoatOfArmsSlider() {
-  // Arma dosyaları
   const coatOfArms = [
-    'agnebogdir.png',
-    'caelestis_axis.png',
-    'drakshala.png',
-    'holtrheim.png',
-    'issalennia.png',
-    'lunaria.png',
-    'mortifodina.png',
-    'tirionnel.png'
+    { file: 'agnebogdir.png',     name: 'Agnebogdir' },
+    { file: 'caelestis_axis.png', name: 'Caelestis Axis' },
+    { file: 'drakshala.png',      name: 'Drakshala' },
+    { file: 'holtrheim.png',      name: 'Holtrheim' },
+    { file: 'issalennia.png',     name: 'Issalennia' },
+    { file: 'lunaria.png',        name: 'Lunaria' },
+    { file: 'mortifodina.png',    name: 'Mortifodina' },
+    { file: 'tirionnel.png',      name: 'Tirionnel' },
   ];
 
   return (
     <div className="coat-of-arms-slider">
       <div className="coat-of-arms-track">
-        {/* Gidip gelen animasyon için tek set yeterli */}
         {coatOfArms.map((coat, index) => (
           <div key={index} className="coat-of-arms-item">
             <img
-              src={`./assest/arma/${coat}`}
-              alt={`Coat of Arms ${index}`}
+              src={`./assest/arma/${coat.file}`}
+              alt={coat.name}
             />
+            <span className="coat-of-arms-label">{coat.name}</span>
           </div>
         ))}
       </div>
-      {/* Sol ve sağ fade efektleri */}
       <div className="coat-of-arms-fade coat-of-arms-fade-left"></div>
       <div className="coat-of-arms-fade coat-of-arms-fade-right"></div>
     </div>

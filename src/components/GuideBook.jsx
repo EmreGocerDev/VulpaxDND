@@ -255,7 +255,9 @@ export default function GuideBook({ onClose }) {
     return { front: null, back: null };
   };
 
-  const isFlipping = flipDirection !== null && (flipProgress > 0 || flipping);
+  // flipDirection set edildiği anda flip elementi render edilmeli;
+  // flipProgress > 0 koşulu ilk frame'de arka yüzün hazır olmamasına neden oluyordu
+  const isFlipping = flipDirection !== null;
   const { front: flipFront, back: flipBack } = getFlipPages();
 
   // Shadow intensities based on flip progress
@@ -305,8 +307,8 @@ export default function GuideBook({ onClose }) {
               </>
             )}
             {/* When flipping backward, show the target left page immediately */}
-            {isFlipping && flipDirection === 'backward' && flipProgress > 0.01 && (
-              <img src={PAGES[leftPage - 2] || PAGES[0]} alt="" draggable={false} style={{ opacity: Math.min(1, flipProgress * 2) }} />
+            {isFlipping && flipDirection === 'backward' && (
+              <img src={PAGES[leftPage - 2] || PAGES[0]} alt="" draggable={false} />
             )}
           </div>
 
@@ -328,8 +330,8 @@ export default function GuideBook({ onClose }) {
               </>
             )}
             {/* When flipping forward, show the target right page immediately */}
-            {isFlipping && flipDirection === 'forward' && flipProgress > 0.01 && (
-              <img src={PAGES[rightPage + 2] || PAGES[5]} alt="" draggable={false} style={{ opacity: Math.min(1, flipProgress * 2) }} />
+            {isFlipping && flipDirection === 'forward' && (
+              <img src={PAGES[rightPage + 2] || PAGES[5]} alt="" draggable={false} />
             )}
           </div>
 

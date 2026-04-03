@@ -57,6 +57,20 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Text seçimi rengi – mavi yerine altın/koyu tema */
+::selection {
+  background: rgba(184, 148, 86, 0.35);
+  color: var(--text-primary);
+}
+
+/* Input ve textarea'larda yazmayı/kopyalamayı etkinleştir */
+input, textarea, [contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ============================================================
@@ -4633,7 +4647,8 @@ h3 { font-size: 18px; }
   transform-style: preserve-3d;
   transition: none;
   will-change: transform;
-  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)) drop-shadow(0 8px 24px rgba(0,0,0,0.2));
+  /* filter kaldırıldı: filter yeni stacking context açar ve
+     transform-style:preserve-3d + backface-visibility:hidden'ı bozar */
 }
 .guidebook-flip--forward {
   right: 4.8%;
@@ -4651,6 +4666,7 @@ h3 { font-size: 18px; }
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow: hidden;
+  transform-style: preserve-3d;
 }
 .guidebook-flip__front img,
 .guidebook-flip__back img {
@@ -4661,10 +4677,16 @@ h3 { font-size: 18px; }
   pointer-events: none;
 }
 .guidebook-flip__back {
-  transform: rotateY(180deg);
+  /* Parent-level horizontal flip + pre-rotation so the back
+     reads correctly throughout the 3D rotation */
+  transform: rotateY(180deg) scaleX(-1);
+  -webkit-transform: rotateY(180deg) scaleX(-1);
+  transform-origin: center;
 }
 .guidebook-flip__back img {
-  transform: scaleX(-1);
+  /* child image should not add another mirror transform */
+  transform: none;
+  -webkit-transform: none;
 }
 
 /* Shadows on the flipping page for realism - Multiple layers for depth */
