@@ -6,6 +6,7 @@ import FriendsSidebar from '../components/FriendsSidebar';
 import PatchNotesModal from '../components/PatchNotesModal';
 import UpdateChecker from '../components/UpdateChecker';
 import GuideBook from '../components/GuideBook';
+import CoatOfArmsSlider from '../components/CoatOfArmsSlider';
 
 export default function LobbyScreen() {
   const navigate = useNavigate();
@@ -248,6 +249,9 @@ export default function LobbyScreen() {
         {/* Friends Sidebar */}
         <FriendsSidebar />
       </div>
+
+      {/* Ülke Armaları Slider - Sadece Sol Kısımda */}
+      <CoatOfArmsSlider />
 
       {/* Room Password Prompt Modal */}
       {showPasswordPrompt && (

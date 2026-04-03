@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
@@ -489,6 +489,22 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     sword: new Audio('./assest/sword.mp3'),
     coin: new Audio('./assest/coin.mp3'),
   });
+
+  // Normalize region/namespace to match arma filenames (case-insensitive, space/underscore equivalent)
+  const ARMA_FILES = ['agnebogdir','caelestis_axis','drakshala','holtrheim','issalennia','lunaria','mortifodina','tirionnel'];
+  const slugify = (str) => {
+    if (!str) return '';
+    const slug = String(str)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (ARMA_FILES.includes(slug)) return slug;
+    const flat = slug.replace(/_/g, '');
+    const match = ARMA_FILES.find(f => f.replace(/_/g, '') === flat);
+    return match || slug;
+  };
 
   const playSfx = (name) => {
     const audio = SFX.current[name];
@@ -1337,6 +1353,11 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
               : member.status === 'stunned' ? 'simple-player-card--stunned'
               : member.status === 'buffed' ? 'simple-player-card--buffed'
               : '';
+
+            // Coat of arms for character region (derived from characters.region)
+            const region = member.characters?.region || null;
+            const coatSrc = region ? `./assest/arma/${slugify(region)}.png` : null;
+            const cardAvatar = getCardImage(member.characters) || null;
             return (
               <div
                 key={member.id}
@@ -1348,7 +1369,14 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                     if (member.characters) setViewingCharacter(member);
                   }
                 }}
-                style={{ cursor: 'pointer' }}
+                style={{
+                  cursor: 'pointer',
+                  ...(cardAvatar ? {
+                    backgroundImage: `linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.85)), url(${cardAvatar})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  } : {})
+                }}
               >
                 <div className="flex items-center justify-between mb-sm">
                   <div className="flex items-center gap-sm" style={{ overflow: 'hidden', flex: 1 }}>
@@ -1389,6 +1417,15 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="text-dim" style={{ fontSize: 11, marginTop: 4, textAlign: 'right' }}>
                   ❤️ {member.current_health}/{maxHp}
                 </div>
+                {coatSrc && (
+                  <img
+                    src={coatSrc}
+                    alt={member.characters?.region ? `${member.characters.region} arma` : 'Arma'}
+                    title={member.characters?.region || ''}
+                    className="char-coat-badge"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                )}
               </div>
             );
           })}

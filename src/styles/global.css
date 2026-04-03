@@ -4458,6 +4458,25 @@ h3 { font-size: 18px; }
   text-transform: uppercase;
 }
 
+/* Coat badge on player cards (bottom-left center point) */
+.simple-player-card {
+  position: relative;
+  overflow: visible;
+}
+.char-coat-badge {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: clamp(30px, 6vw, 54px);
+  height: clamp(30px, 6vw, 54px);
+  transform: translate(-50%, 50%);
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+  object-fit: contain;
+  z-index: 6;
+  pointer-events: auto;
+  cursor: help;
+}
+
 /* Expandable story section under char card */
 .lore-char-card__story {
   padding: 14px;
