@@ -19,6 +19,9 @@ import CombatCalculator from '../components/CombatCalculator';
 import AchievementPanel from '../components/AchievementPanel';
 import PartyLoot from '../components/PartyLoot';
 import MonsterBook from '../components/MonsterBook';
+import Blackjack from '../components/Blackjack';
+import SpriteKitty from '../components/SpriteKitty';
+import { useBlackjackStore } from '../stores/blackjackStore';
 
 export default function GameScreen() {
   const { roomId } = useParams();
@@ -366,7 +369,7 @@ export default function GameScreen() {
 
           {/* Dice Tray */}
           <div className="parchment-panel" style={{ padding: 16 }}>
-            <DiceTray roomId={roomId} userId={profile.id} />
+            <DiceTray roomId={roomId} userId={profile.id} username={profile.username || profile.display_name} gameChannel={gameChannelRef.current} />
           </div>
 
           {/* DM Controls */}
@@ -459,6 +462,22 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const [showXpPanel, setShowXpPanel] = useState(false);
   const [xpTargetPlayer, setXpTargetPlayer] = useState(''); // specific player for XP
 
+  // Quiz System
+  const [showQuizCreator, setShowQuizCreator] = useState(false);
+  const [quizQuestion, setQuizQuestion] = useState('');
+  const [quizOptions, setQuizOptions] = useState(['', '', '', '']);
+  const [quizCorrectIndex, setQuizCorrectIndex] = useState(0);
+  const [activeQuiz, setActiveQuiz] = useState(null); // { question, options, correctIndex }
+  const [quizPhase, setQuizPhase] = useState(null); // 'countdown' | 'answering' | 'results'
+  const [quizCountdown, setQuizCountdown] = useState(3);
+  const [quizMyAnswer, setQuizMyAnswer] = useState(null);
+  const [quizAnswers, setQuizAnswers] = useState([]); // [{ userId, username, selectedIndex, time }]
+  const [quizTimer, setQuizTimer] = useState(10);
+  const quizXpAwarded = useRef(false);
+  const quizChannelRef = useRef(null);
+  const quizAnswersRef = useRef([]); // ref mirror for broadcast callback
+  const gameChannelRef = useRef(null); // broadcast channel for instant SFX/events
+
   const cardHandRef = useRef(null);
   const musicRef = useRef(null);
   const fadeRef = useRef(null);
@@ -476,6 +495,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     return s.gameSfxVolume ?? 50;
   });
   const [musicTracks, setMusicTracks] = useState([]);
+  const musicTracksRef = useRef([]);
 
   // SFX map – event sounds from assest/
   const SFX = useRef({
@@ -585,7 +605,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     fetchTitles();
   }, [members]);
 
-  // Detect turn from actions
+  // Detect turn from actions (DB fallback — SFX/overlay handled by broadcast channel)
   useEffect(() => {
     const turnAction = actions.find((a) =>
       a.action_type === 'dm_action' && a.action_value?.message?.startsWith('🔄 Sıra:')
@@ -597,22 +617,6 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         setCardUsedThisTurn(false);
         setPendingCard(null);
         setCardConfirm(null);
-
-        // Show turn announcement overlay (skip if skipOverlay flag is set)
-        if (!turnAction.action_value.skipOverlay) {
-          const turnMember = members.find(m => m.user_id === newTurnId);
-          if (turnMember) {
-            const playerName = turnMember.profiles?.username || 'Oyuncu';
-            const playerTitle = titleMap[newTurnId] || null;
-            const charImage = turnMember.characters?.image_placeholder ? `.${turnMember.characters.image_placeholder}` : null;
-            const charName = turnMember.characters?.name || null;
-            const charRarity = turnMember.characters?.rarity || 'common';
-            const playerAvatar = avatarMap[newTurnId] || null;
-            setTurnOverlay({ name: playerName, title: playerTitle, charImage, charName, charRarity, avatarUrl: playerAvatar });
-            playSfx('levelBegining');
-            setTimeout(() => setTurnOverlay(null), 3000);
-          }
-        }
       }
     }
   }, [actions]);
@@ -677,45 +681,8 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     }
   }, [actions]);
 
-  // Watch for character selection broadcasts (show to everyone)
-  useEffect(() => {
-    const charAction = actions.find((a) =>
-      a.action_type === 'dm_action' && a.action_value?.charSelected && !seenActionIds.has(a.id)
-    );
-    if (charAction) {
-      setSeenActionIds(prev => new Set([...prev, charAction.id]));
-      playSfx('alive');
-      setCharSelectOverlay({
-        username: charAction.profiles?.username || 'Oyuncu',
-        charName: charAction.action_value.charName,
-        charHealth: charAction.action_value.charHealth,
-        charAttack: charAction.action_value.charAttack,
-        charDefense: charAction.action_value.charDefense,
-        charRarity: charAction.action_value.charRarity,
-        charId: charAction.action_value.charId,
-      });
-      setTimeout(() => setCharSelectOverlay(null), 3500);
-    }
-  }, [actions]);
-
-  // Watch for dice roll broadcasts (show fullscreen to everyone)
-  useEffect(() => {
-    const diceAction = actions.find((a) =>
-      a.action_type === 'dice_roll' && !seenActionIds.has(a.id)
-    );
-    if (diceAction) {
-      setSeenActionIds(prev => new Set([...prev, diceAction.id]));
-      playSfx('diceZar');
-      setDiceOverlay({
-        username: diceAction.profiles?.username || 'Oyuncu',
-        dice_type: diceAction.action_value?.dice_type || 'd20',
-        result: diceAction.action_value?.result,
-        is_critical: diceAction.action_value?.is_critical,
-        is_fumble: diceAction.action_value?.is_fumble,
-      });
-      setTimeout(() => setDiceOverlay(null), 2500);
-    }
-  }, [actions]);
+  // Character selection & dice roll — SFX/overlays handled by broadcast channel
+  // DB fallback only for state consistency (no sounds)
 
   // Load available music tracks from filesystem
   useEffect(() => {
@@ -763,6 +730,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   // Keep volume refs in sync
   useEffect(() => { musicVolumeRef.current = musicVolume; }, [musicVolume]);
   useEffect(() => { sfxVolumeRef.current = sfxVolume; }, [sfxVolume]);
+  useEffect(() => { musicTracksRef.current = musicTracks; }, [musicTracks]);
 
   // Play level beginning SFX on game mount + initialize seen SFX IDs
   useEffect(() => {
@@ -772,33 +740,236 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   }, []);
 
   // Watch for SFX-triggering actions (plays for EVERYONE, only NEW actions)
+  // OLD: used actions array from postgres_changes (1-3s delay)
+  // NEW: uses broadcast channel for instant delivery — keep this effect only for story log display
+  // SFX are now handled by game broadcast channel below
+
+  // ===== GAME BROADCAST CHANNEL — instant SFX/overlays for all players =====
   useEffect(() => {
-    for (const action of actions) {
-      if (seenSfxIds.current.has(action.id)) continue;
-      seenSfxIds.current.add(action.id);
-      const msg = action.action_value?.message || '';
-      if (action.action_type === 'dm_action') {
-        if (msg.includes('öldü')) {
-          playSfx('die');
-          // Extract player name from message (e.g. "💀 PlayerName öldü!")
-          const nameMatch = msg.match(/💀\s*(.+?)\s*(?:zehirden\s+)?öldü/);
-          setDeathOverlay({ name: nameMatch ? nameMatch[1] : '???' });
+    const channel = supabase.channel(`game-sfx-${roomId}`, { config: { broadcast: { self: true } } })
+      // Dedicated SFX channel — fires BEFORE any DB operations, like dice
+      .on('broadcast', { event: 'game_sfx' }, ({ payload }) => {
+        if (payload.sfx) playSfx(payload.sfx);
+        // Death overlay
+        if (payload.sfx === 'die' && payload.deathName) {
+          setDeathOverlay({ name: payload.deathName });
           setTimeout(() => setDeathOverlay(null), 3000);
         }
-        else if (msg.includes('hayata döndü') || msg.includes('diriltildi')) {
-          playSfx('alive');
-          const nameMatch = msg.match(/✨\s*(?:.+?→\s*)?(.+?)\s*(?:hayata döndü|diriltildi)/);
-          setAliveOverlay({ name: nameMatch ? nameMatch[1] : '???' });
+        // Alive overlay
+        if (payload.sfx === 'alive' && payload.aliveName) {
+          setAliveOverlay({ name: payload.aliveName });
           setTimeout(() => setAliveOverlay(null), 3000);
         }
-        else if (msg.includes('sersemledi')) playSfx('stun');
-        else if (msg.includes('zehirlendi')) playSfx('potion');
-        else if (msg.includes('hasar aldı')) playSfx('sword');
-        else if (msg.includes('onaylandı') && action.action_value?.cardApproval) playSfx('card');
-        else if (action.action_value?.resetCards) playSfx('card');
+      })
+      // Game events — music, dice, turn, char select (no SFX here, SFX uses game_sfx)
+      .on('broadcast', { event: 'game_event' }, ({ payload }) => {
+        // Character selection overlay
+        if (payload.charSelected) {
+          playSfx('alive');
+          setCharSelectOverlay({
+            username: payload.senderName || 'Oyuncu',
+            charName: payload.charName,
+            charHealth: payload.charHealth,
+            charAttack: payload.charAttack,
+            charDefense: payload.charDefense,
+            charRarity: payload.charRarity,
+            charId: payload.charId,
+          });
+          setTimeout(() => setCharSelectOverlay(null), 3500);
+        }
+
+        // Music change — instant
+        if (payload.musicChange) {
+          const raw = payload.musicTrack;
+          const rawTrack = (!raw || raw === '__stop__') ? null : raw;
+          const resolveTrack = (candidate) => {
+            if (!candidate) return null;
+            if (musicTracksRef.current.find(t => t.file === candidate)) return candidate;
+            try { const dec = decodeURIComponent(candidate); if (musicTracksRef.current.find(t => t.file === dec)) return dec; } catch (e) {}
+            const pref = candidate.startsWith('./') ? candidate : `./assest/music/${candidate}`;
+            if (musicTracksRef.current.find(t => t.file === pref)) return pref;
+            try { const enc = encodeURIComponent(candidate); if (musicTracksRef.current.find(t => t.file === enc)) return enc; } catch (e) {}
+            return candidate;
+          };
+          const resolved = resolveTrack(rawTrack);
+          if (resolved !== currentMusicRef.current) {
+            fadeToTrack(resolved);
+          }
+        }
+
+        // Dice roll — instant
+        if (payload.diceRoll) {
+          playSfx('diceZar');
+          setDiceOverlay({
+            username: payload.senderName || 'Oyuncu',
+            dice_type: payload.dice_type || 'd20',
+            result: payload.result,
+            is_critical: payload.is_critical,
+            is_fumble: payload.is_fumble,
+          });
+          setTimeout(() => setDiceOverlay(null), 2500);
+        }
+
+        // Turn announcement — instant
+        if (payload.turnUserId && !payload.skipOverlay) {
+          const turnMember = members.find(m => m.user_id === payload.turnUserId);
+          if (turnMember) {
+            const playerName = turnMember.profiles?.username || 'Oyuncu';
+            const playerTitle = titleMap[turnMember.user_id] || null;
+            const charImage = turnMember.characters?.image_placeholder ? `.${turnMember.characters.image_placeholder}` : null;
+            const charName = turnMember.characters?.name || null;
+            const charRarity = turnMember.characters?.rarity || 'common';
+            const playerAvatar = avatarMap[turnMember.user_id] || null;
+            setTurnOverlay({ name: playerName, title: playerTitle, charImage, charName, charRarity, avatarUrl: playerAvatar });
+            playSfx('levelBegining');
+            setTimeout(() => setTurnOverlay(null), 3000);
+          }
+          // Update turn state for everyone
+          setCurrentTurnId(payload.turnUserId);
+          setCardUsedThisTurn(false);
+          setPendingCard(null);
+          setCardConfirm(null);
+        }
+      })
+      .subscribe();
+
+    gameChannelRef.current = channel;
+    return () => { supabase.removeChannel(channel); gameChannelRef.current = null; };
+  }, [roomId]);
+
+  // ===== QUIZ SYSTEM (Supabase Broadcast — instant, no DB lag) =====
+
+  // Setup broadcast channel for quiz
+  useEffect(() => {
+    const channel = supabase.channel(`quiz-${roomId}`, { config: { broadcast: { self: true } } })
+      .on('broadcast', { event: 'quiz_start' }, ({ payload }) => {
+        setActiveQuiz({
+          question: payload.question,
+          options: payload.options,
+          correctIndex: payload.correctIndex,
+        });
+        setQuizPhase('countdown');
+        setQuizCountdown(3);
+        setQuizMyAnswer(null);
+        setQuizAnswers([]);
+        quizAnswersRef.current = [];
+        setQuizTimer(10);
+        quizXpAwarded.current = false;
+        playSfx('levelBegining');
+      })
+      .on('broadcast', { event: 'quiz_answer' }, ({ payload }) => {
+        setQuizAnswers(prev => {
+          // Prevent duplicate answers from same user
+          if (prev.find(a => a.userId === payload.userId)) return prev;
+          const updated = [...prev, {
+            userId: payload.userId,
+            username: payload.username,
+            selectedIndex: payload.selectedIndex,
+            time: Date.now(),
+          }];
+          quizAnswersRef.current = updated;
+          return updated;
+        });
+      })
+      .subscribe();
+
+    quizChannelRef.current = channel;
+    return () => { supabase.removeChannel(channel); quizChannelRef.current = null; };
+  }, [roomId]);
+
+  // Quiz countdown: 3 → 2 → 1 → answering
+  useEffect(() => {
+    if (quizPhase !== 'countdown') return;
+    if (quizCountdown <= 0) {
+      setQuizPhase('answering');
+      playSfx('card');
+      return;
+    }
+    const timer = setTimeout(() => setQuizCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [quizPhase, quizCountdown]);
+
+  // Quiz answer timer: 10 → 0 → results
+  useEffect(() => {
+    if (quizPhase !== 'answering') return;
+    if (quizTimer <= 0) {
+      setQuizPhase('results');
+      return;
+    }
+    const timer = setTimeout(() => setQuizTimer(t => t - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [quizPhase, quizTimer]);
+
+  // Check if all non-DM members answered → go to results early
+  useEffect(() => {
+    if (quizPhase !== 'answering') return;
+    const nonDmMembers = members.filter(m => m.user_id !== currentRoom.dm_id);
+    if (quizAnswers.length >= nonDmMembers.length && nonDmMembers.length > 0) {
+      setQuizPhase('results');
+    }
+  }, [quizAnswers, quizPhase]);
+
+  // Award XP to first correct answerer (DM only, once)
+  useEffect(() => {
+    if (quizPhase !== 'results' || !isDM || !activeQuiz || quizXpAwarded.current) return;
+    quizXpAwarded.current = true;
+    const correctAnswers = quizAnswersRef.current
+      .filter(a => a.selectedIndex === activeQuiz.correctIndex);
+    if (correctAnswers.length > 0) {
+      const winner = correctAnswers[0];
+      const winnerMember = members.find(m => m.user_id === winner.userId);
+      if (winnerMember) {
+        updateMemberXp(winnerMember.id, (winnerMember.xp || 0) + 1);
+        sendAction(`🏆 ${winner.username} soruyu ilk doğru cevaplayan olarak 1 XP kazandı!`);
       }
     }
-  }, [actions]);
+  }, [quizPhase]);
+
+  // Handle quiz answer submission (broadcast — instant)
+  const handleQuizAnswer = async (index) => {
+    if (quizMyAnswer !== null || !activeQuiz || isDM) return;
+    setQuizMyAnswer(index);
+    quizChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'quiz_answer',
+      payload: {
+        userId: profile.id,
+        username: profile.username || profile.display_name || 'Oyuncu',
+        selectedIndex: index,
+      },
+    });
+  };
+
+  // Handle quiz creation (broadcast — instant for all players)
+  const handleSendQuiz = async () => {
+    if (!quizQuestion.trim() || quizOptions.some(o => !o.trim())) return;
+    // Broadcast quiz to all clients instantly
+    quizChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'quiz_start',
+      payload: {
+        question: quizQuestion.trim(),
+        options: quizOptions.map(o => o.trim()),
+        correctIndex: quizCorrectIndex,
+      },
+    });
+    // Also log to story for history
+    await sendAction(`❓ Soru soruldu: ${quizQuestion.trim()}`);
+    setShowQuizCreator(false);
+    setQuizQuestion('');
+    setQuizOptions(['', '', '', '']);
+    setQuizCorrectIndex(0);
+  };
+
+  const handleCloseQuiz = () => {
+    setActiveQuiz(null);
+    setQuizPhase(null);
+    setQuizMyAnswer(null);
+    setQuizAnswers([]);
+    quizAnswersRef.current = [];
+  };
+
+  // ===== END QUIZ SYSTEM =====
 
   // Fade helper
   const fadeToTrack = (newTrack) => {
@@ -849,36 +1020,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     }
   };
 
-  // Watch for DM music selection broadcast
-  useEffect(() => {
-    const musicActions = actions.filter((a) =>
-      a.action_type === 'dm_action' && a.action_value?.musicChange
-    );
-    if (musicActions.length === 0) return;
-    const latest = musicActions[0]; // actions are newest-first
-    const raw = latest.action_value.musicTrack;
-    const rawTrack = (!raw || raw === '__stop__') ? null : raw;
-
-    const resolveTrack = (candidate) => {
-      if (!candidate) return null;
-      // If exact match in loaded tracks
-      if (musicTracks.find(t => t.file === candidate)) return candidate;
-      // Try decodeURIComponent (handle percent-encoded names)
-      try { const dec = decodeURIComponent(candidate); if (musicTracks.find(t => t.file === dec)) return dec; } catch (e) {}
-      // Try common prefix
-      const pref = candidate.startsWith('./') ? candidate : `./assest/music/${candidate}`;
-      if (musicTracks.find(t => t.file === pref)) return pref;
-      // Try encodeURIComponent
-      try { const enc = encodeURIComponent(candidate); if (musicTracks.find(t => t.file === enc)) return enc; } catch (e) {}
-      // Last resort: return candidate raw
-      return candidate;
-    };
-
-    const resolved = resolveTrack(rawTrack);
-    if (resolved !== currentMusicRef.current) {
-      fadeToTrack(resolved);
-    }
-  }, [actions, musicTracks]);
+  // Music change — handled by broadcast channel now (instant, no DB delay)
 
   // Volume control
   useEffect(() => {
@@ -913,6 +1055,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   };
 
   const handleResetCards = async () => {
+    broadcastSfx('card');
     setUsedCards([]);
     setFlippingCard(null);
     setPendingCard(null);
@@ -936,7 +1079,23 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     await sendAction(`⭐ ${m.profiles?.username} → 1 XP kazandı! (Toplam: ${(m.xp || 0) + 1} XP)`);
   };
 
+  // Broadcast SFX instantly — like dice does. No DB delay. Call BEFORE any await.
+  const broadcastSfx = (sfxName, extra = {}) => {
+    gameChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_sfx',
+      payload: { sfx: sfxName, ...extra },
+    });
+  };
+
   const sendAction = async (message, extra = {}) => {
+    // Broadcast instantly for non-SFX events (music, turn, charSelect etc)
+    gameChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_event',
+      payload: { message, senderId: profile.id, senderName: profile.username || profile.display_name, ...extra },
+    });
+    // Still insert to DB for story log (delayed via postgres_changes, but log only)
     await supabase.from('room_actions').insert({
       room_id: roomId,
       user_id: profile.id,
@@ -960,26 +1119,19 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
     setPendingCard(null);
     setCardConfirm(null);
 
-    // Show turn overlay immediately for the DM (useEffect won't fire since currentTurnId already set)
-    const playerName = m.profiles?.username || 'Oyuncu';
-    const playerTitle = titleMap[m.user_id] || null;
-    const charImage = m.characters?.image_placeholder ? `.${m.characters.image_placeholder}` : null;
-    const charName = m.characters?.name || null;
-    const charRarity = m.characters?.rarity || 'common';
-    const playerAvatar = avatarMap[m.user_id] || null;
-    setTurnOverlay({ name: playerName, title: playerTitle, charImage, charName, charRarity, avatarUrl: playerAvatar });
-    playSfx('levelBegining');
-    setTimeout(() => setTurnOverlay(null), 3000);
+    // Turn overlay & SFX are handled by broadcast channel (self: true) via sendAction below
 
     // Process poison tick for the player getting the turn
     if (m.poison_turns > 0) {
       const poisonDmg = m.poison_value || 0;
       const newHp = Math.max(0, m.current_health - poisonDmg);
+      broadcastSfx('sword');
       await updateMemberHealth(m.id, newHp);
       const newPoisonTurns = m.poison_turns - 1;
       await updateMemberPoison(m.id, newPoisonTurns, newPoisonTurns > 0 ? m.poison_value : 0);
       await sendAction(`🧪 ${m.profiles?.username} zehirden ${poisonDmg} hasar aldı! (${newHp} HP kaldı) [${newPoisonTurns} tur kaldı]`);
       if (newHp <= 0) {
+        broadcastSfx('die', { deathName: m.profiles?.username });
         await updateMemberStatus(m.id, 'dead');
         await sendAction(`💀 ${m.profiles?.username} zehirden öldü!`);
       } else if (newPoisonTurns <= 0) {
@@ -1003,6 +1155,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const handleDealDamage = async () => {
     if (!targetMember || damageAmount <= 0) return;
+    broadcastSfx('sword');
     const newHp = Math.max(0, targetMember.current_health - damageAmount);
     await updateMemberHealth(targetMember.id, newHp);
     await sendAction(`⚔ ${targetMember.profiles?.username} → ${damageAmount} hasar aldı! (${newHp} HP kaldı)`);
@@ -1011,6 +1164,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const handleHeal = async () => {
     if (!targetMember || healAmount <= 0) return;
+    broadcastSfx('alive');
     const maxHp = targetMember.characters?.health || 100;
     const newHp = Math.min(maxHp, targetMember.current_health + healAmount);
     await updateMemberHealth(targetMember.id, newHp);
@@ -1020,6 +1174,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const handleKill = async () => {
     if (!targetMember) return;
+    broadcastSfx('die', { deathName: targetMember.profiles?.username || '???' });
     await updateMemberHealth(targetMember.id, 0);
     await updateMemberStatus(targetMember.id, 'dead');
     await sendAction(`💀 ${targetMember.profiles?.username} öldü!`);
@@ -1032,6 +1187,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const handleRevive = async () => {
     if (!targetMember) return;
+    broadcastSfx('alive', { aliveName: targetMember.profiles?.username || '???' });
     const maxHp = targetMember.characters?.health || 100;
     await updateMemberHealth(targetMember.id, Math.floor(maxHp / 2));
     await updateMemberStatus(targetMember.id, 'alive');
@@ -1040,6 +1196,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const handleStun = async () => {
     if (!targetMember) return;
+    broadcastSfx('stun');
     await updateMemberStatus(targetMember.id, 'stunned');
     await sendAction(`💫 ${targetMember.profiles?.username} sersemledi!`);
   };
@@ -1057,6 +1214,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
   const handlePoison = async () => {
     if (!targetMember) return;
+    broadcastSfx('potion');
     await updateMemberStatus(targetMember.id, 'poisoned');
     await sendAction(`🧪 ${targetMember.profiles?.username} zehirlendi!`);
   };
@@ -1167,6 +1325,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
     switch (power.effect_type) {
       case 'saldiri': {
+        broadcastSfx('sword');
         const atkBase = targetMem.user_id === caster.id ? (casterMem?.characters?.attack || 10) : (casterMem?.characters?.attack || 10);
         const atkBonus = casterMem?.attack_bonus || 0;
         const atkXp = (casterMem?.xp || 0) * xpRate;
@@ -1180,6 +1339,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         await updateMemberHealth(targetMem.id, newHp);
         await sendAction(`⚔ ${power.name} → ${tName}: ${totalAtk}+${effectVal}-${totalDef}=${dmg} hasar vuruldu! (${newHp} HP kaldı)`);
         if (newHp <= 0) {
+          broadcastSfx('die', { deathName: tName });
           await updateMemberStatus(targetMem.id, 'dead');
           await sendAction(`💀 ${tName} öldü!`);
           // XP: Ölen kişi -2 XP
@@ -1194,12 +1354,14 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         break;
       }
       case 'zehir': {
+        broadcastSfx('potion');
         await updateMemberPoison(targetMem.id, 3, effectVal);
         await updateMemberStatus(targetMem.id, 'poisoned');
         await sendAction(`🧪 ${power.name} → ${tName} zehirlendi! 3 tur boyunca her tur ${effectVal} hasar alacak.`);
         break;
       }
       case 'sersemletme': {
+        broadcastSfx('stun');
         await updateMemberStun(targetMem.id, 3);
         await updateMemberStatus(targetMem.id, 'stunned');
         await sendAction(`💫 ${power.name} → ${tName} sersemletildi! 3 tur boyunca kart atamaz.`);
@@ -1210,6 +1372,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
           await sendAction(`✨ ${power.name} → ${tName} zaten hayatta!`);
           break;
         }
+        broadcastSfx('alive', { aliveName: tName });
         const reviveHp = Math.min(effectVal, targetMem.characters?.health || 100);
         await updateMemberHealth(targetMem.id, reviveHp);
         await updateMemberStatus(targetMem.id, 'alive');
@@ -1222,6 +1385,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         break;
       }
       case 'can': {
+        broadcastSfx('alive');
         const maxHp = targetMem.characters?.health || 100;
         const newHp = Math.min(maxHp, targetMem.current_health + effectVal);
         await updateMemberHealth(targetMem.id, newHp);
@@ -1253,6 +1417,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         break;
       }
       case 'temel_saldiri': {
+        broadcastSfx('sword');
         const atkBase = casterMem?.characters?.attack || 10;
         const atkBonus = casterMem?.attack_bonus || 0;
         const atkXp = (casterMem?.xp || 0) * xpRate;
@@ -1266,6 +1431,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         await updateMemberHealth(targetMem.id, newHp);
         await sendAction(`⚔ Normal Saldırı → ${tName}: ${totalAtk}-${totalDef}=${dmg} hasar! (${newHp} HP kaldı)`);
         if (newHp <= 0) {
+          broadcastSfx('die', { deathName: tName });
           await updateMemberStatus(targetMem.id, 'dead');
           await sendAction(`💀 ${tName} öldü!`);
           // XP: Ölen kişi -2 XP
@@ -1280,6 +1446,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
         break;
       }
       case 'dinlenme': {
+        broadcastSfx('alive');
         const maxHp = targetMem.characters?.health || 100;
         const healHp = Math.min(maxHp, targetMem.current_health + 5);
         await updateMemberHealth(targetMem.id, healHp);
@@ -1337,6 +1504,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
   const pendingCardActions = actions.filter((a) => a.action_type === 'card_use' && a.action_value?.pending);
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
     <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(0, 1fr) 320px', gap: 16, flex: 1, minHeight: 0 }}>
 
       {/* Left: Players + Dice */}
@@ -1435,7 +1603,7 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
 
         {/* Dice Tray */}
         <div className="parchment-panel" style={{ padding: 16, flexShrink: 0 }}>
-          <DiceTray roomId={roomId} userId={profile.id} />
+          <DiceTray roomId={roomId} userId={profile.id} username={profile.username || profile.display_name} gameChannel={gameChannelRef.current} />
         </div>
       </div>
 
@@ -1938,6 +2106,28 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
           >
             📖
           </button>
+          {/* DM Quiz FAB */}
+          <button
+            className="dm-fab dm-fab--quiz"
+            onClick={() => setShowQuizCreator(!showQuizCreator)}
+            title="Soru Sor"
+          >
+            ❓
+          </button>
+          {/* DM Blackjack FAB */}
+          <button
+            className="dm-fab dm-fab--blackjack"
+            onClick={() => {
+              const bjStore = useBlackjackStore.getState();
+              if (!bjStore.active) {
+                bjStore.startGame(members, currentRoom.dm_id);
+              }
+            }}
+            title="Blackjack"
+            style={{ fontSize: 20 }}
+          >
+            🃏
+          </button>
 
           {/* Music Dropdown */}
           {showMusicMenu && (
@@ -2036,7 +2226,171 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
               </div>
             </div>
           )}
+
+          {/* Quiz Creator Modal */}
+          {showQuizCreator && (
+            <div className="card-detail-overlay" onClick={() => setShowQuizCreator(false)}>
+              <div className="quiz-creator-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="quiz-creator-modal__header">
+                  <div className="quiz-creator-modal__icon">❓</div>
+                  <h3 className="quiz-creator-modal__title">Soru Sor</h3>
+                  <div className="quiz-creator-modal__subtitle">Tüm savaşçılara meydan oku!</div>
+                </div>
+                <div className="quiz-creator-modal__body">
+                  <input
+                    className="input"
+                    placeholder="Soruyu yaz..."
+                    value={quizQuestion}
+                    onChange={(e) => setQuizQuestion(e.target.value)}
+                    maxLength={200}
+                    style={{ marginBottom: 14, fontSize: 14 }}
+                  />
+                  {quizOptions.map((opt, i) => {
+                    const labels = ['A', 'B', 'C', 'D'];
+                    const colors = ['#E53935', '#1E88E5', '#FDD835', '#43A047'];
+                    return (
+                      <div key={i} className="quiz-creator-option-row">
+                        <div className="quiz-creator-option-badge" style={{ background: colors[i], color: i === 2 ? '#333' : '#fff' }}>{labels[i]}</div>
+                        <input
+                          className="input"
+                          placeholder={`${labels[i]} şıkkı...`}
+                          value={opt}
+                          onChange={(e) => {
+                            const newOpts = [...quizOptions];
+                            newOpts[i] = e.target.value;
+                            setQuizOptions(newOpts);
+                          }}
+                          maxLength={100}
+                          style={{ flex: 1, fontSize: 13 }}
+                        />
+                        <button
+                          className={`quiz-creator-correct-btn ${quizCorrectIndex === i ? 'quiz-creator-correct-btn--active' : ''}`}
+                          onClick={() => setQuizCorrectIndex(i)}
+                          title="Doğru cevap olarak işaretle"
+                        >
+                          {quizCorrectIndex === i ? '✅' : '⬜'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <p style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 8, marginBottom: 16, textAlign: 'center' }}>
+                    ✅ ile doğru cevabı işaretle · Herkes 10 saniye içinde cevaplayacak
+                  </p>
+                  <div className="flex gap-md" style={{ justifyContent: 'center' }}>
+                    <button
+                      className="btn btn-gold"
+                      onClick={handleSendQuiz}
+                      disabled={!quizQuestion.trim() || quizOptions.some(o => !o.trim())}
+                    >
+                      ⚔ Soruyu Gönder
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => setShowQuizCreator(false)}>
+                      İptal
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
+      )}
+
+      {/* Quiz Fullscreen Overlay — visible to everyone */}
+      {activeQuiz && quizPhase && (
+        <div className="quiz-overlay">
+          {/* Countdown Phase */}
+          {quizPhase === 'countdown' && (
+            <div className="quiz-overlay__countdown">
+              <div className="quiz-overlay__countdown-number" key={quizCountdown}>
+                {quizCountdown > 0 ? quizCountdown : '⚔'}
+              </div>
+              <div className="quiz-overlay__countdown-label">Hazırlan!</div>
+            </div>
+          )}
+
+          {/* Answering Phase */}
+          {quizPhase === 'answering' && (
+            <div className="quiz-overlay__content">
+              <div className="quiz-overlay__question-card">
+                <div className="quiz-overlay__timer-badge">
+                  <span className="quiz-overlay__timer-number">{quizTimer}</span>
+                </div>
+                <div className="quiz-overlay__question-scroll">{activeQuiz.question}</div>
+              </div>
+              <div className="quiz-overlay__options">
+                {activeQuiz.options.map((opt, i) => {
+                  const optionLabels = ['A', 'B', 'C', 'D'];
+                  const isSelected = quizMyAnswer === i;
+                  const isAnswered = quizMyAnswer !== null;
+                  return (
+                    <button
+                      key={i}
+                      className={`quiz-overlay__option quiz-overlay__option--${optionLabels[i].toLowerCase()} ${isSelected ? 'quiz-overlay__option--selected' : ''} ${isAnswered && !isSelected ? 'quiz-overlay__option--disabled' : ''}`}
+                      onClick={() => handleQuizAnswer(i)}
+                      disabled={isAnswered || isDM}
+                    >
+                      <span className="quiz-overlay__option-label">{optionLabels[i]}</span>
+                      <span className="quiz-overlay__option-text">{opt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {quizMyAnswer !== null && (
+                <div className="quiz-overlay__waiting">⚔ Cevabın alındı! Diğer savaşçılar bekleniyor...</div>
+              )}
+              {isDM && (
+                <div className="quiz-overlay__dm-info">
+                  Cevaplayan: {quizAnswers.length} / {members.filter(m => m.user_id !== currentRoom.dm_id).length}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Results Phase */}
+          {quizPhase === 'results' && (
+            <div className="quiz-overlay__content">
+              <div className="quiz-overlay__results-header">
+                <div className="quiz-overlay__results-icon">📜</div>
+                <h2 className="quiz-overlay__results-title">Sonuçlar</h2>
+              </div>
+              <div className="quiz-overlay__question-card quiz-overlay__question-card--small">
+                <div className="quiz-overlay__question-scroll">{activeQuiz.question}</div>
+              </div>
+              <div className="quiz-overlay__correct-answer">
+                ✅ Doğru Cevap: <strong>{activeQuiz.options[activeQuiz.correctIndex]}</strong>
+              </div>
+              <div className="quiz-overlay__results-list">
+                {quizAnswers.length === 0 ? (
+                  <div className="quiz-overlay__no-answers">
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>🦗</div>
+                    Kimse cevaplamadı!
+                  </div>
+                ) : (
+                  quizAnswers.map((answer, idx) => {
+                    const isCorrect = answer.selectedIndex === activeQuiz.correctIndex;
+                    const isFirst = isCorrect && quizAnswers.filter(a => a.selectedIndex === activeQuiz.correctIndex)[0]?.userId === answer.userId;
+                    return (
+                      <div key={answer.userId} className={`quiz-result-row ${isCorrect ? 'quiz-result-row--correct' : 'quiz-result-row--wrong'} ${isFirst ? 'quiz-result-row--winner' : ''}`} style={{ animationDelay: `${idx * 0.15}s` }}>
+                        <span className="quiz-result-row__rank">#{idx + 1}</span>
+                        <span className="quiz-result-row__name">{answer.username}</span>
+                        <span className="quiz-result-row__answer">
+                          {activeQuiz.options[answer.selectedIndex]}
+                        </span>
+                        <span className="quiz-result-row__icon">
+                          {isCorrect ? '✅' : '❌'}
+                        </span>
+                        {isFirst && <span className="quiz-result-row__xp">🏆 +1 XP</span>}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <button className="btn btn-gold" onClick={handleCloseQuiz} style={{ marginTop: 20, minWidth: 160 }}>
+                ⚔ Kapat
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Monster Book FAB — visible to everyone */}
@@ -2082,12 +2436,12 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="dm-cockpit__stat-label">❤️ CAN</div>
                 <div className="dm-cockpit__stat-value">{vc.current_health} / {vc.characters?.health || '?'}</div>
                 <div className="dm-cockpit__stat-controls">
-                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = Math.max(0, vc.current_health - 10); await updateMemberHealth(vc.id, v); playSfx('sword'); await sendAction(`⚔ ${vc.profiles?.username} → 10 hasar aldı! (${v} HP kaldı)`); }}>-10</button>
-                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { const v = Math.max(0, vc.current_health - 1); await updateMemberHealth(vc.id, v); playSfx('sword'); await sendAction(`⚔ ${vc.profiles?.username} → 1 hasar aldı! (${v} HP kaldı)`); }}>-1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { broadcastSfx('sword'); const v = Math.max(0, vc.current_health - 10); await updateMemberHealth(vc.id, v); await sendAction(`⚔ ${vc.profiles?.username} → 10 hasar aldı! (${v} HP kaldı)`); }}>-10</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { broadcastSfx('sword'); const v = Math.max(0, vc.current_health - 1); await updateMemberHealth(vc.id, v); await sendAction(`⚔ ${vc.profiles?.username} → 1 hasar aldı! (${v} HP kaldı)`); }}>-1</button>
                   <input type="number" className="dm-cockpit__input" placeholder="HP" min="0" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val)) { const v = Math.max(0, Math.min(vc.characters?.health || 999, val)); updateMemberHealth(vc.id, v); sendAction(`❤️ ${vc.profiles?.username} HP → ${v} olarak ayarlandı`); e.target.value = ''; } }}} />
-                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = Math.min(vc.characters?.health || 999, vc.current_health + 1); await updateMemberHealth(vc.id, v); playSfx('alive'); await sendAction(`💚 ${vc.profiles?.username} → 1 HP iyileşti! (${v} HP)`); }}>+1</button>
-                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { const v = Math.min(vc.characters?.health || 999, vc.current_health + 10); await updateMemberHealth(vc.id, v); playSfx('alive'); await sendAction(`💚 ${vc.profiles?.username} → 10 HP iyileşti! (${v} HP)`); }}>+10</button>
-                  <button className="dm-cockpit__btn dm-cockpit__btn--max" onClick={async () => { const v = vc.characters?.health || 100; await updateMemberHealth(vc.id, v); playSfx('alive'); await sendAction(`💚 ${vc.profiles?.username} full HP! (${v})`); }}>MAX</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { broadcastSfx('alive'); const v = Math.min(vc.characters?.health || 999, vc.current_health + 1); await updateMemberHealth(vc.id, v); await sendAction(`💚 ${vc.profiles?.username} → 1 HP iyileşti! (${v} HP)`); }}>+1</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { broadcastSfx('alive'); const v = Math.min(vc.characters?.health || 999, vc.current_health + 10); await updateMemberHealth(vc.id, v); await sendAction(`💚 ${vc.profiles?.username} → 10 HP iyileşti! (${v} HP)`); }}>+10</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--max" onClick={async () => { broadcastSfx('alive'); const v = vc.characters?.health || 100; await updateMemberHealth(vc.id, v); await sendAction(`💚 ${vc.profiles?.username} full HP! (${v})`); }}>MAX</button>
                 </div>
               </div>
 
@@ -2176,9 +2530,9 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="dm-cockpit__stat-label">📋 DURUM</div>
                 <div className="dm-cockpit__stat-value"><span className={`badge badge--${vc.status}`}>{vc.status}</span></div>
                 <div className="dm-cockpit__stat-controls">
-                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberStatus(vc.id, 'alive'); playSfx('alive'); await sendAction(`✅ ${vc.profiles?.username} artık canlı!`); }}>Canlı</button>
-                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { await updateMemberHealth(vc.id, 0); await updateMemberStatus(vc.id, 'dead'); playSfx('die'); await sendAction(`💀 ${vc.profiles?.username} öldü!`); if (vc.user_id !== currentRoom.dm_id) { await updateMemberXp(vc.id, Math.max(0, (vc.xp || 0) - 2)); await sendAction(`⭐ ${vc.profiles?.username} öldüğü için 2 XP kaybetti!`); } }}>Öldür</button>
-                  <button className="dm-cockpit__btn" onClick={async () => { const maxHp = vc.characters?.health || 100; const v = Math.floor(maxHp / 2); await updateMemberHealth(vc.id, v); await updateMemberStatus(vc.id, 'alive'); playSfx('alive'); await sendAction(`✨ ${vc.profiles?.username} hayata döndü! (${v} HP)`); }}>Dirilt</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { broadcastSfx('alive'); await updateMemberStatus(vc.id, 'alive'); await sendAction(`✅ ${vc.profiles?.username} artık canlı!`); }}>Canlı</button>
+                  <button className="dm-cockpit__btn dm-cockpit__btn--minus" onClick={async () => { broadcastSfx('die', { deathName: vc.profiles?.username }); await updateMemberHealth(vc.id, 0); await updateMemberStatus(vc.id, 'dead'); await sendAction(`💀 ${vc.profiles?.username} öldü!`); if (vc.user_id !== currentRoom.dm_id) { await updateMemberXp(vc.id, Math.max(0, (vc.xp || 0) - 2)); await sendAction(`⭐ ${vc.profiles?.username} öldüğü için 2 XP kaybetti!`); } }}>Öldür</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { broadcastSfx('alive', { aliveName: vc.profiles?.username }); const maxHp = vc.characters?.health || 100; const v = Math.floor(maxHp / 2); await updateMemberHealth(vc.id, v); await updateMemberStatus(vc.id, 'alive'); await sendAction(`✨ ${vc.profiles?.username} hayata döndü! (${v} HP)`); }}>Dirilt</button>
                   <button className="dm-cockpit__btn" style={{ background: '#9C27B0' }} onClick={async () => { await updateMemberStatus(vc.id, 'buffed'); await sendAction(`⬆️ ${vc.profiles?.username} buff aldı!`); }}>Buff</button>
                 </div>
               </div>
@@ -2188,10 +2542,10 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="dm-cockpit__stat-label">🧪 ZEHİR</div>
                 <div className="dm-cockpit__stat-value">{vc.poison_turns > 0 ? `${vc.poison_turns} tur (${vc.poison_value}/tur)` : 'Yok'}</div>
                 <div className="dm-cockpit__stat-controls">
-                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberPoison(vc.id, 3, 5); await updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); await sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (3 tur, 5 hasar/tur)`); }}>3T/5D</button>
-                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberPoison(vc.id, 5, 10); await updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); await sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (5 tur, 10 hasar/tur)`); }}>5T/10D</button>
-                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { const dmgInput = e.target.nextElementSibling; const dmg = parseInt(dmgInput?.value) || 5; updateMemberPoison(vc.id, val, dmg); updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (${val} tur, ${dmg} hasar/tur)`); e.target.value = ''; if (dmgInput) dmgInput.value = ''; } }}} />
-                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Dmg" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); const turInput = e.target.previousElementSibling; const tur = parseInt(turInput?.value) || 3; if (!isNaN(val) && val > 0) { updateMemberPoison(vc.id, tur, val); updateMemberStatus(vc.id, 'poisoned'); playSfx('potion'); sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (${tur} tur, ${val} hasar/tur)`); e.target.value = ''; if (turInput) turInput.value = ''; } }}} />
+                  <button className="dm-cockpit__btn" onClick={async () => { broadcastSfx('potion'); await updateMemberPoison(vc.id, 3, 5); await updateMemberStatus(vc.id, 'poisoned'); await sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (3 tur, 5 hasar/tur)`); }}>3T/5D</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { broadcastSfx('potion'); await updateMemberPoison(vc.id, 5, 10); await updateMemberStatus(vc.id, 'poisoned'); await sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (5 tur, 10 hasar/tur)`); }}>5T/10D</button>
+                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { const dmgInput = e.target.nextElementSibling; const dmg = parseInt(dmgInput?.value) || 5; broadcastSfx('potion'); updateMemberPoison(vc.id, val, dmg); updateMemberStatus(vc.id, 'poisoned'); sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (${val} tur, ${dmg} hasar/tur)`); e.target.value = ''; if (dmgInput) dmgInput.value = ''; } }}} />
+                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Dmg" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); const turInput = e.target.previousElementSibling; const tur = parseInt(turInput?.value) || 3; if (!isNaN(val) && val > 0) { broadcastSfx('potion'); updateMemberPoison(vc.id, tur, val); updateMemberStatus(vc.id, 'poisoned'); sendAction(`🧪 ${vc.profiles?.username} zehirlendi! (${tur} tur, ${val} hasar/tur)`); e.target.value = ''; if (turInput) turInput.value = ''; } }}} />
                   <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberPoison(vc.id, 0, 0); if (vc.stun_turns <= 0) await updateMemberStatus(vc.id, 'alive'); await sendAction(`🧪 ${vc.profiles?.username} zehir temizlendi!`); }}>Temizle</button>
                 </div>
               </div>
@@ -2201,9 +2555,9 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
                 <div className="dm-cockpit__stat-label">💫 SERSEMLETME</div>
                 <div className="dm-cockpit__stat-value">{vc.stun_turns > 0 ? `${vc.stun_turns} tur` : 'Yok'}</div>
                 <div className="dm-cockpit__stat-controls">
-                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberStun(vc.id, 1); await updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (1 tur)`); }}>1 Tur</button>
-                  <button className="dm-cockpit__btn" onClick={async () => { await updateMemberStun(vc.id, 3); await updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (3 tur)`); }}>3 Tur</button>
-                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { updateMemberStun(vc.id, val); updateMemberStatus(vc.id, 'stunned'); playSfx('stun'); sendAction(`💫 ${vc.profiles?.username} sersemledi! (${val} tur)`); e.target.value = ''; } }}} />
+                  <button className="dm-cockpit__btn" onClick={async () => { broadcastSfx('stun'); await updateMemberStun(vc.id, 1); await updateMemberStatus(vc.id, 'stunned'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (1 tur)`); }}>1 Tur</button>
+                  <button className="dm-cockpit__btn" onClick={async () => { broadcastSfx('stun'); await updateMemberStun(vc.id, 3); await updateMemberStatus(vc.id, 'stunned'); await sendAction(`💫 ${vc.profiles?.username} sersemledi! (3 tur)`); }}>3 Tur</button>
+                  <input type="number" className="dm-cockpit__input dm-cockpit__input--small" placeholder="Tur" onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) { broadcastSfx('stun'); updateMemberStun(vc.id, val); updateMemberStatus(vc.id, 'stunned'); sendAction(`💫 ${vc.profiles?.username} sersemledi! (${val} tur)`); e.target.value = ''; } }}} />
                   <button className="dm-cockpit__btn dm-cockpit__btn--plus" onClick={async () => { await updateMemberStun(vc.id, 0); if (vc.poison_turns <= 0) await updateMemberStatus(vc.id, 'alive'); await sendAction(`💫 ${vc.profiles?.username} sersemletme temizlendi!`); }}>Temizle</button>
                 </div>
               </div>
@@ -2351,6 +2705,19 @@ function SimpleGameMode({ roomId, profile, currentRoom, members, actions, isDM }
           </div>
         </div>
       )}
+
+      {/* Blackjack Overlay */}
+      <Blackjack
+        roomId={roomId}
+        profile={profile}
+        members={members}
+        currentRoom={currentRoom}
+        isDM={isDM}
+        updateMemberXp={updateMemberXp}
+      />
+
+    </div>
+    <SpriteKitty />
     </div>
   );
 }

@@ -10,7 +10,7 @@ const DICE_TYPES = [
   { sides: 20, label: 'D20', icon: '⭐' },
 ];
 
-export default function DiceTray({ roomId, userId }) {
+export default function DiceTray({ roomId, userId, username, gameChannel }) {
   const [rolling, setRolling] = useState(false);
   const [lastResult, setLastResult] = useState(null);
   const [animating, setAnimating] = useState(false);
@@ -23,7 +23,24 @@ export default function DiceTray({ roomId, userId }) {
     setAnimating(true);
 
     const result = Math.floor(Math.random() * sides) + 1;
+    const is_critical = sides === 20 && result === 20;
+    const is_fumble = sides === 20 && result === 1;
 
+    // Broadcast instantly for SFX/overlay (no DB delay)
+    gameChannel?.send({
+      type: 'broadcast',
+      event: 'game_event',
+      payload: {
+        diceRoll: true,
+        senderName: username || 'Oyuncu',
+        dice_type: `d${sides}`,
+        result,
+        is_critical,
+        is_fumble,
+      },
+    });
+
+    // Still insert to DB for story log
     await supabase.from('room_actions').insert({
       room_id: roomId,
       user_id: userId,
@@ -31,8 +48,8 @@ export default function DiceTray({ roomId, userId }) {
       action_value: {
         dice_type: `d${sides}`,
         result,
-        is_critical: sides === 20 && result === 20,
-        is_fumble: sides === 20 && result === 1,
+        is_critical,
+        is_fumble,
       },
     });
 

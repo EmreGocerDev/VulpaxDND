@@ -250,4 +250,5 @@ export const useMarketStore = create((set, get) => ({
       .update({ equipped_title_id: null })
       .eq('id', userId);
   },
+
 }));
